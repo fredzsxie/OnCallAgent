@@ -3,7 +3,9 @@ package config_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/gogf/gf/v2/frame/g"
@@ -12,6 +14,7 @@ import (
 
 func setConfig(t *testing.T, content string) {
 	t.Helper()
+	content += "\nchat_model:\n  base_url: https://example.invalid/v1\n  model: test-model\n"
 	adapter, err := gcfg.NewAdapterContent(content)
 	if err != nil {
 		t.Fatal(err)
@@ -19,6 +22,13 @@ func setConfig(t *testing.T, content string) {
 	original := g.Cfg().GetAdapter()
 	g.Cfg().SetAdapter(adapter)
 	t.Cleanup(func() { g.Cfg().SetAdapter(original) })
+	t.Setenv("ONCALL_CHAT_MODEL_API_KEY", "test-key")
+	for _, name := range []string{"ONCALL_CHAT_MODEL_BASE_URL", "ONCALL_CHAT_MODEL_MODEL", "ONCALL_CHAT_MODEL_TIMEOUT"} {
+		t.Setenv(name, "")
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestDefaultAndYAMLPort(t *testing.T) {
@@ -63,5 +73,55 @@ func TestInvalidPort(t *testing.T) {
 				t.Fatalf("expected invalid port %q to fail", value)
 			}
 		})
+	}
+}
+
+func TestChatModelEnvironmentOverrides(t *testing.T) {
+	setConfig(t, "server:\n  port: 6872")
+	t.Setenv("ONCALL_CHAT_MODEL_BASE_URL", "http://127.0.0.1:18000/v1")
+	t.Setenv("ONCALL_CHAT_MODEL_MODEL", "actual-model-id")
+	t.Setenv("ONCALL_CHAT_MODEL_API_KEY", "another-test-key")
+	t.Setenv("ONCALL_CHAT_MODEL_TIMEOUT", "750ms")
+	cfg, err := config.LoadChatModel(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseURL != "http://127.0.0.1:18000/v1" || cfg.Model != "actual-model-id" || cfg.APIKey != "another-test-key" || cfg.Timeout != 750*time.Millisecond {
+		t.Fatal("model environment overrides did not apply")
+	}
+}
+
+func TestInvalidChatModelConfiguration(t *testing.T) {
+	for _, tt := range []struct{ env, value string }{
+		{"ONCALL_CHAT_MODEL_BASE_URL", ""},
+		{"ONCALL_CHAT_MODEL_BASE_URL", "ftp://example.invalid"},
+		{"ONCALL_CHAT_MODEL_BASE_URL", "https://user:test-secret@example.invalid/v1"},
+		{"ONCALL_CHAT_MODEL_BASE_URL", "https://example.invalid/v1/chat/completions"},
+		{"ONCALL_CHAT_MODEL_MODEL", " "},
+		{"ONCALL_CHAT_MODEL_API_KEY", ""},
+		{"ONCALL_CHAT_MODEL_TIMEOUT", "invalid"},
+		{"ONCALL_CHAT_MODEL_TIMEOUT", "0s"},
+	} {
+		t.Run(tt.env+"/"+tt.value, func(t *testing.T) {
+			setConfig(t, "server:\n  port: 6872")
+			t.Setenv(tt.env, tt.value)
+			_, err := config.LoadChatModel(context.Background())
+			if err == nil || strings.Contains(err.Error(), "test-secret") {
+				t.Fatalf("expected safe validation error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestRejectAPIKeyInYAML(t *testing.T) {
+	setConfig(t, "server:\n  port: 6872")
+	adapter, err := gcfg.NewAdapterContent("chat_model:\n  base_url: https://example.invalid/v1\n  model: test-model\n  api_key: test-secret\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Cfg().SetAdapter(adapter)
+	_, err = config.LoadChatModel(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "must not be configured in YAML") || strings.Contains(err.Error(), "test-secret") {
+		t.Fatalf("expected safe key-in-YAML error, got %v", err)
 	}
 }

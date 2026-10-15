@@ -4,7 +4,10 @@ import (
 	"log"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
+	chatlogic "github.com/fredzsxie/OnCallAgent/backend/internal/logic/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -12,15 +15,23 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load(gctx.New())
+	ctx := gctx.New()
+	cfg, err := config.Load(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	model, err := client.NewOpenAI(ctx, cfg.ChatModel)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer model.Close()
+	chatService := chatlogic.NewChatService(model)
 
 	s := g.Server()
 	s.Group("/api", func(group *ghttp.RouterGroup) {
 		group.Middleware(middleware.ResponseMiddleware)
 		group.Bind(health.NewV1())
+		group.Bind(chat.NewV1(chatService))
 	})
 	s.SetPort(cfg.Port)
 	s.Run()

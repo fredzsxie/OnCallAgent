@@ -1,2 +1,10 @@
 server:
   port: 6872
+
+# Fill these fields or use ONCALL_CHAT_MODEL_* environment variables.
+# base_url is the API base path, typically ending in /v1, not /chat/completions.
+chat_model:
+  base_url: ""
+  model: ""
+  timeout: 30s
+# API key: ONCALL_CHAT_MODEL_API_KEY only. Never store it here.
