@@ -24,7 +24,14 @@ backend/
 
 ## 配置与启动
 
-在 `backend/manifest/config/config.yaml` 中填写模型 API 基础地址和实际模型 ID，或通过环境变量覆盖。密钥只接受环境变量：
+在 `backend/.env` 中填写 `backend/.env.example` 列出的变量，然后启动：
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run .
+```
+
+普通配置也可填写在 `backend/manifest/config/config.yaml`，或继续使用已导出的环境变量；密钥通过进程环境或 `.env` 提供：
 
 ```bash
 cd OnCallAgent/backend
@@ -35,7 +42,9 @@ export ONCALL_CHAT_MODEL_TIMEOUT='30s'
 GOTOOLCHAIN=local go run .
 ```
 
-Base URL 通常以 `/v1` 结尾，具体以服务商为准；不要填写完整的 `/chat/completions` 地址。API Key 不允许放在 YAML 中，程序也不会自动加载 `.env`。`backend/.env.example` 列出所需变量。未提供有效配置时服务会在启动前报错。
+Base URL 通常以 `/v1` 结尾，具体以服务商为准；不要填写完整的 `/chat/completions` 地址。API Key 不允许放在 YAML 中。未提供有效配置时服务会在启动前报错。
+
+Web 服务和独立模型检查命令都会在读取配置前自动加载 `.env`：优先使用当前工作目录的 `.env`，不存在时查找 `backend/.env`，只加载第一份存在的文件。文件不存在时允许仅通过进程环境配置；文件存在但语法错误时明确报错。`.env` 已由 `.gitignore` 排除。
 
 | YAML 字段 | 环境变量 | 默认值 |
 | --- | --- | --- |
@@ -45,7 +54,7 @@ Base URL 通常以 `/v1` 结尾，具体以服务商为准；不要填写完整�
 | 不接受 YAML 密钥 | `ONCALL_CHAT_MODEL_API_KEY` | 必填 |
 | `chat_model.timeout` | `ONCALL_CHAT_MODEL_TIMEOUT` | 30s |
 
-环境变量显式覆盖 YAML，包括空值；空的必填字段、非法端口、非正数或无法解析的超时都会被拒绝。端口范围为 1–65535，超时支持 `750ms`、`30s` 等格式。
+配置优先级为：**已有进程环境变量 > `.env` > YAML > 默认值**。`.env` 不覆盖已导出的变量，包括空值；空的必填字段、非法端口、非正数或无法解析的超时都会被拒绝。端口范围为 1–65535，超时支持 `750ms`、`30s` 等格式。
 
 模型客户端在启动时创建一次，多个请求复用同一个 Eino ChatModel 和 HTTP 连接池。每次请求传递原始 context，再附加配置中的超时；退出后关闭空闲模型连接。
 

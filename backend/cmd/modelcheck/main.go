@@ -20,10 +20,14 @@ func main() {
 }
 
 func run() error {
+	if err := config.LoadEnv(); err != nil {
+		return err
+	}
 	cfg, err := config.LoadChatModel(gctx.New())
 	if err != nil {
 		return err
 	}
+	// Share one total deadline across catalog lookup and completion instead of resetting it.
 	ctx, cancel := context.WithTimeout(gctx.New(), cfg.Timeout)
 	defer cancel()
 	model, err := client.NewOpenAI(ctx, cfg)

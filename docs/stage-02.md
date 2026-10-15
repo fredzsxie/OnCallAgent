@@ -43,7 +43,11 @@ ChatReq(Id, Question)
 
 ## 配置与版本
 
-`chat_model.base_url`、`chat_model.model`、`chat_model.timeout` 从 GoFrame 配置读取，再显式应用对应 `ONCALL_CHAT_MODEL_*` 环境变量。API Key 只从 `ONCALL_CHAT_MODEL_API_KEY` 读取；YAML 的 `chat_model.api_key` 字段会被拒绝。
+Web 入口和独立模型检查命令先调用 `config.LoadEnv`，把 `.env` 中尚未存在的变量载入进程环境。优先查找工作目录的 `.env`，不存在时查找 `backend/.env`；只加载第一份存在的文件。已有进程环境变量不会被覆盖。
+
+`chat_model.base_url`、`chat_model.model`、`chat_model.timeout` 从 GoFrame 配置读取，再显式应用对应 `ONCALL_CHAT_MODEL_*` 环境变量。最终优先级为进程原有变量、`.env`、YAML、默认值。API Key 只从 `ONCALL_CHAT_MODEL_API_KEY` 读取（可由 `.env` 注入）；YAML 的 `chat_model.api_key` 字段会被拒绝。
+
+`.env` 解析使用 `godotenv v1.5.1`。未找到文件不报错，存在但格式有误时返回不含原始内容的错误。之前仅填写 `.env` 仍报 Base URL 无效，是因为文件没有被加载，校验实际读到的是空配置；现在空地址会明确提示设置 `ONCALL_CHAT_MODEL_BASE_URL`。
 
 新增 Eino `v0.6.0` 和 OpenAI 模型扩展 `v0.1.1`，使用锁定版本的 `NewChatModel`、`ChatModelConfig.HTTPClient` 和 `Generate` API。GoFrame 保持 `v2.7.1`，Go 保持 `1.23.12`。未引入要求 Go 1.24 的 `eino-examples`。
 
@@ -68,3 +72,5 @@ ChatReq(Id, Question)
 模型检查部分验收（2026-10-15）：全部配置、聊天、模型检查测试及竞态检测通过，静态检查和两个命令的构建通过。使用临时本地 OpenAI 兼容协议端点运行构建产物，验证了独立检查成功、错误 ID 非零退出、Web 连续两次聊天成功、health 不触发模型调用、缺少密钥拒绝启动及 SIGTERM 正常退出。检查命令在 `ONCALL_SERVER_PORT` 非法时仍能独立运行。所有验收进程已清理。
 
 真实服务商的模型 ID、鉴权和聊天接口集成测试：**未执行（未提供连接信息及凭据）**。模型检查功能已通过本地协议测试，不能将这些结果表述为真实模型已连接。
+
+`.env` 加载修复验收（2026-10-15）：配置优先级、文件查找、带引号的值和错误脱敏测试，以及全部聊天回归与竞态检测通过；静态检查及两个入口构建通过。本地协议端点验证了两个入口均能仅通过 `.env` 获取模型配置；现有 `backend/.env` 也已用于成功启动服务并访问 health。此次未调用真实模型，未修改本地 `.env` 或 YAML 配置。

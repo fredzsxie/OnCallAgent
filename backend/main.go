@@ -15,11 +15,16 @@ import (
 )
 
 func main() {
+	// Populate the environment before configuration applies its override rules.
+	if err := config.LoadEnv(); err != nil {
+		log.Fatal(err)
+	}
 	ctx := gctx.New()
 	cfg, err := config.Load(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Create one model and connection pool for all requests, rather than per controller call.
 	model, err := client.NewOpenAI(ctx, cfg.ChatModel)
 	if err != nil {
 		log.Fatal(err)

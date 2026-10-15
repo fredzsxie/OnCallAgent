@@ -24,13 +24,13 @@ type ChatModel struct {
 	Timeout time.Duration
 }
 
-// Load reads GoFrame configuration, then explicitly applies the environment override.
 func Load(ctx context.Context) (Config, error) {
 	value, err := g.Cfg().Get(ctx, "server.port", 6872)
 	if err != nil {
 		return Config{}, err
 	}
 	rawPort := value.String()
+	// An explicitly empty variable must fail validation rather than fall back to YAML.
 	if port, ok := os.LookupEnv("ONCALL_SERVER_PORT"); ok {
 		rawPort = port
 	}
@@ -45,7 +45,6 @@ func Load(ctx context.Context) (Config, error) {
 	return Config{Port: port, ChatModel: model}, nil
 }
 
-// LoadChatModel is also used by the independent model check command.
 func LoadChatModel(ctx context.Context) (ChatModel, error) {
 	var cfg ChatModel
 	for _, field := range []struct {
@@ -77,7 +76,7 @@ func LoadChatModel(ctx context.Context) (ChatModel, error) {
 	if err != nil || cfg.Timeout <= 0 {
 		return ChatModel{}, fmt.Errorf("chat_model.timeout / ONCALL_CHAT_MODEL_TIMEOUT must be a positive duration, for example 30s")
 	}
-	// Keys are never read from YAML or copied from the reference project.
+	// Read secrets only from the environment, optionally populated by .env, never YAML.
 	keyInFile, err := g.Cfg().Get(ctx, "chat_model.api_key")
 	if err != nil {
 		return ChatModel{}, err
@@ -93,11 +92,15 @@ func LoadChatModel(ctx context.Context) (ChatModel, error) {
 }
 
 func (c ChatModel) Validate() error {
+	if strings.TrimSpace(c.BaseURL) == "" {
+		return fmt.Errorf("chat_model.base_url is required; set ONCALL_CHAT_MODEL_BASE_URL in the environment or .env")
+	}
 	parsed, err := url.Parse(c.BaseURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("chat_model.base_url must be an http(s) API base URL without credentials, query or fragment")
 	}
 	if strings.HasSuffix(strings.TrimRight(parsed.Path, "/"), "/chat/completions") {
+		// Eino appends this endpoint itself; accepting it here would duplicate the path.
 		return fmt.Errorf("chat_model.base_url must be the API base path, not /chat/completions")
 	}
 	if strings.TrimSpace(c.Model) == "" {

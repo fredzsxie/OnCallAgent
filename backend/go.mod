@@ -6,6 +6,7 @@ require (
 	github.com/cloudwego/eino v0.6.0
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.1
 	github.com/gogf/gf/v2 v2.7.1
+	github.com/joho/godotenv v1.5.1
 )
 
 require (
