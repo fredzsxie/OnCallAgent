@@ -7,6 +7,7 @@ OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服
 ```text
 backend/
 ├── main.go                  # 启动时创建一次模型客户端并注入 ChatService
+├── cmd/modelcheck/          # 独立模型 ID 与接口检查命令
 ├── api/{health,chat}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── config/             # 配置读取、环境变量覆盖和校验
@@ -48,6 +49,24 @@ Base URL 通常以 `/v1` 结尾，具体以服务商为准；不要填写完整�
 
 模型客户端在启动时创建一次，多个请求复用同一个 Eino ChatModel 和 HTTP 连接池。每次请求传递原始 context，再附加配置中的超时；退出后关闭空闲模型连接。
 
+## 独立模型检查
+
+配置好上述环境变量后，无需启动 Web 服务即可执行：
+
+```bash
+GOTOOLCHAIN=local go run ./cmd/modelcheck
+```
+
+命令先通过 `GET <base_url>/models` 查询服务商返回的实际模型 ID，确认配置 ID 精确匹配，再通过与聊天服务相同的 Eino 客户端发起一次聊天。成功输出 JSON，并以状态 0 退出：
+
+```json
+{"configured_model":"实际模型ID","available_models":["实际模型ID"],"model_id_verified":true,"chat_completion_available":true}
+```
+
+错误 ID 会提示服务商返回的可用 ID；鉴权失败、超时或聊天失败均以非零状态退出。整个检查受 `chat_model.timeout` 约束。若服务商不支持 `/models`，命令会明确报告无法验证模型目录；此时仍可用下面的 curl 单独验证聊天接口，不能将目录检查失败当成聊天一定不可用。
+
+检查依据是服务商 API 的模型目录及配置 ID 的成功调用，不依据模型文本中的自报身份。网关内部如何将 ID 映射到模型由服务商负责。
+
 ## curl 验收
 
 ```bash
@@ -84,6 +103,7 @@ GOTOOLCHAIN=local go test -timeout 60s ./test/...
 GOTOOLCHAIN=local go test -race -timeout 90s ./test/...
 GOTOOLCHAIN=local go vet ./...
 GOTOOLCHAIN=local go build -o bin/oncallagent .
+GOTOOLCHAIN=local go build -o bin/modelcheck ./cmd/modelcheck
 ```
 
 测试使用临时本地 HTTP 端点验证实际 Eino 适配器发送的模型 ID、认证头与请求内容，以及错误响应、超时和取消传播。这些属于本地协议测试；未提供真实模型连接信息和凭据时，真实集成测试标记为未执行。
