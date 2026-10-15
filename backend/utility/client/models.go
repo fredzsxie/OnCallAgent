@@ -12,7 +12,7 @@ import (
 
 func (c *OpenAI) ModelID() string { return c.cfg.Model }
 
-// Models queries provider metadata, not the language model's self-description.
+// Models verifies provider metadata rather than trusting model self-descriptions.
 func (c *OpenAI) Models(ctx context.Context) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()

@@ -24,6 +24,7 @@ func Check(ctx context.Context, model *client.OpenAI) (*Result, error) {
 	if !slices.Contains(ids, model.ModelID()) {
 		return nil, fmt.Errorf("configured model ID %q not found in GET /models; available IDs: %s", model.ModelID(), strings.Join(ids, ", "))
 	}
+	// A catalog entry alone does not prove completion access; require both checks to pass.
 	if _, err := model.Generate(ctx, "Please reply with OK."); err != nil {
 		return nil, fmt.Errorf("chat completion check failed: %w", err)
 	}

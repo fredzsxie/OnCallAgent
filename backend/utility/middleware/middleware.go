@@ -21,6 +21,7 @@ func ResponseMiddleware(r *ghttp.Request) {
 	r.Middleware.Next()
 	message := "OK"
 	if err := r.GetError(); err != nil {
+		// Map failure categories to public messages without echoing upstream error details.
 		status := http.StatusInternalServerError
 		message = "internal server error"
 		switch {

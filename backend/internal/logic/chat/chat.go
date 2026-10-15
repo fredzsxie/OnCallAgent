@@ -18,7 +18,7 @@ func NewChatService(model client.ModelClient) *ChatService {
 	return &ChatService{model: model}
 }
 
-// Chat is a single turn. Id is retained for the later conversation-memory stage.
+// Chat is single-turn; Id is reserved for conversation memory and adds no history yet.
 func (s *ChatService) Chat(ctx context.Context, id, question string) (string, error) {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(question) == "" {
 		return "", ErrInvalidInput

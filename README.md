@@ -121,4 +121,6 @@ GOTOOLCHAIN=local go build -o bin/modelcheck ./cmd/modelcheck
 
 在 `codex/dev` 开发，每项改动验收后提交到本地。提交使用 **`type(scope): subject`**，例如 `feat(chat): add ordinary chat endpoint`、`test(chat): verify request cancellation`。按独立功能或修复划分范围，同一阶段可以有多条提交。
 
+仅在核心逻辑中使用必要的英文注释，解释配置优先级、context 与超时传递、错误处理等设计原因；普通方法与直观判断不逐一注释。后续新增或修改核心逻辑时同步维护。
+
 实现说明见 `docs/stage-01.md` 和 `docs/stage-02.md`。

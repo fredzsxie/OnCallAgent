@@ -14,7 +14,6 @@ import (
 
 var ErrModelRequest = errors.New("model request failed")
 
-// ModelClient is the small interface ChatService needs; Eino stays in this adapter.
 type ModelClient interface {
 	Generate(context.Context, string) (string, error)
 }
@@ -25,7 +24,6 @@ type OpenAI struct {
 	cfg   config.ChatModel
 }
 
-// NewOpenAI creates one reusable Eino model and its HTTP connection pool.
 func NewOpenAI(ctx context.Context, cfg config.ChatModel) (*OpenAI, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -34,7 +32,7 @@ func NewOpenAI(ctx context.Context, cfg config.ChatModel) (*OpenAI, error) {
 	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   cfg.Timeout,
-		// An API redirect is a configuration issue, not a reason to forward a key.
+		// Do not forward credentials to a redirected API address.
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	model, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
@@ -49,10 +47,12 @@ func NewOpenAI(ctx context.Context, cfg config.ChatModel) (*OpenAI, error) {
 }
 
 func (c *OpenAI) Generate(ctx context.Context, question string) (string, error) {
+	// Preserve request cancellation and any earlier deadline from the parent context.
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	out, err := c.model.Generate(ctx, []*schema.Message{schema.UserMessage(question)})
 	if err != nil {
+		// Keep cancellation and timeout distinguishable before masking provider errors.
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
@@ -60,7 +60,7 @@ func (c *OpenAI) Generate(ctx context.Context, question string) (string, error) 
 		if errors.As(err, &networkErr) && networkErr.Timeout() {
 			return "", context.DeadlineExceeded
 		}
-		// Provider errors can contain credentials or submitted text; do not expose them.
+		// Provider errors may contain credentials or submitted text; expose only a safe sentinel.
 		return "", ErrModelRequest
 	}
 	if out == nil || strings.TrimSpace(out.Content) == "" {
