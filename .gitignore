@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+backend/bin/
+backend/data/
+backend/log/
+backend/coverage.out
+backend/manifest/config/*.local.yaml
+*.test
