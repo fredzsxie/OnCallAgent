@@ -14,7 +14,7 @@ main.go
 
 GET /api/health
   → ControllerV1.Health
-  → logic.Health
+  → healthservice.Health
   → ResponseMiddleware
   → {"message":"OK","data":{"status":"alive"}}
 ```
@@ -23,7 +23,7 @@ GET /api/health
 
 - `main.go` 使用 `g.Server()`、`Group`、`Bind`、`SetPort`、`Run`。
 - `api` 使用 `g.Meta` 声明接口；路径 `/health` 与分组 `/api` 组合为 `/api/health`。
-- `internal/controller` 处理请求，`internal/logic` 返回业务结果。
+- `internal/controller` 处理请求，`internal/service` 返回业务结果。
 - `utility/middleware` 通过 `ResponseMiddleware` 统一返回 `message/data`，业务错误使用 HTTP 500、参数错误使用 HTTP 400。
 - `internal/config` 只负责当前用到的端口配置与校验，环境变量优先于 YAML，YAML 优先于默认值。
 

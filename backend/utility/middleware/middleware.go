@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/fredzsxie/OnCallAgent/backend/internal/logic/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"

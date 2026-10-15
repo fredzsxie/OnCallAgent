@@ -11,8 +11,8 @@ backend/
 ├── api/{health,chat}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── config/             # 配置读取、环境变量覆盖和校验
-│   ├── controller/         # 接收 HTTP 请求，调用 logic
-│   └── logic/              # 健康检查与 ChatService
+│   ├── controller/         # 接收 HTTP 请求，调用 service
+│   └── service/            # 健康检查与 ChatService
 ├── utility/
 │   ├── client/             # 模型客户端接口、Eino OpenAI 适配器
 │   └── middleware/         # message/data 统一响应及状态码

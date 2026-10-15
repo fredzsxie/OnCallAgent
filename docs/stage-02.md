@@ -20,7 +20,7 @@ Content-Type: application/json
 ```text
 config.Load
   → client.NewOpenAI：创建 Eino ChatModel 和可复用 HTTP 连接池
-  → chat.NewChatService(model)：注入模型客户端接口
+  → chatservice.NewChatService(model)：注入模型客户端接口
   → controller/chat.NewV1(service)：注入聊天业务
   → GoFrame Group / Bind / Run
 ```
@@ -37,7 +37,7 @@ ChatReq(Id, Question)
   → ChatRes(answer) → message/data
 ```
 
-控制器只处理 HTTP 适配，业务校验放在 `internal/logic/chat`，Eino 和外部连接集中在 `utility/client`。模型在启动时创建，未放进控制器或逐次请求创建。
+控制器只处理 HTTP 适配，业务校验放在 `internal/service/chat`，Eino 和外部连接集中在 `utility/client`。模型在启动时创建，未放进控制器或逐次请求创建。
 
 配置超时同时约束 HTTP 客户端和单次调用的 context。上游调用继承请求取消和更早的 deadline。服务商错误不直接传给浏览器，避免原始错误包含密钥或问题内容。
 
@@ -63,7 +63,7 @@ Web 入口和独立模型检查命令先调用 `config.LoadEnv`，把 `.env` 中
 
 运行 `GOTOOLCHAIN=local go run ./cmd/modelcheck`，只读取模型配置，不启动 GoFrame HTTP 服务，也不要求 server.port 可用。
 
-检查流程是：`LoadChatModel → NewOpenAI → GET /models → 配置 ID 精确匹配 → Eino Generate → 输出 JSON`。检查的编排逻辑位于 `internal/logic/modelcheck`，模型目录的 HTTP 请求集中在 `utility/client/models.go`，命令入口只负责配置、客户端生命周期和输出。
+检查流程是：`LoadChatModel → NewOpenAI → GET /models → 配置 ID 精确匹配 → Eino Generate → 输出 JSON`。检查的编排逻辑位于 `internal/service/modelcheck`，模型目录的 HTTP 请求集中在 `utility/client/models.go`，命令入口只负责配置、客户端生命周期和输出。
 
 只有模型目录包含目标 ID，且聊天请求返回有效文本，才报告两个检查项成功。目录接口不受支持时明确报错；不会根据“你是什么模型”的文字回答推测 ID。模型列表和聊天探测共享命令总超时。
 

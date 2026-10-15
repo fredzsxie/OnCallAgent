@@ -6,7 +6,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
-	chatlogic "github.com/fredzsxie/OnCallAgent/backend/internal/logic/chat"
+	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gogf/gf/v2/frame/g"
@@ -30,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer model.Close()
-	chatService := chatlogic.NewChatService(model)
+	chatService := chatservice.NewChatService(model)
 
 	s := g.Server()
 	s.Group("/api", func(group *ghttp.RouterGroup) {

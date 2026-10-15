@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/logic/modelcheck"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/modelcheck"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 )
 

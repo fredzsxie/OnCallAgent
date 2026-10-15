@@ -4,14 +4,14 @@ import (
 	"context"
 
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/chat/v1"
-	logic "github.com/fredzsxie/OnCallAgent/backend/internal/logic/chat"
+	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 )
 
 type ControllerV1 struct {
-	service *logic.ChatService
+	service *chatservice.ChatService
 }
 
-func NewV1(service *logic.ChatService) *ControllerV1 {
+func NewV1(service *chatservice.ChatService) *ControllerV1 {
 	return &ControllerV1{service: service}
 }
 
