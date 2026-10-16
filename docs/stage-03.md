@@ -4,9 +4,9 @@
 
 采用 Eino 官方 Ark Embedding v0.1.2，通过 `/embeddings/multimodal` 向 `doubao-embedding-vision-251215` 提交纯文本。客户端在每个命令开始时创建一次并复用，退出时关闭连接池。每次调用继承 context 和更早的 deadline，再附加配置超时；关闭自动重试以便诊断。实际输出必须是维度一致、可转换为 float32 的有限非零向量，不补齐、不截断、不转成二进制向量。
 
-配置由 GoFrame 读取，再显式应用环境变量。优先级为进程环境、`.env`、YAML、默认值。密钥与 Milvus 认证只接受环境变量；`ARK_API_KEY` 可提供豆包凭据，显式设置的 `ONCALL_EMBEDDING_API_KEY` 优先。完整配置表与验收命令见根目录 README。
+配置直接读取环境变量，优先级为进程环境、`.env`、默认值。密钥与 Milvus 认证只接受环境变量；`ARK_API_KEY` 可提供豆包凭据，显式设置的 `ONCALL_EMBEDDING_API_KEY` 优先。完整配置表与验收命令见根目录 README。
 
-Milvus 通过单独工厂建立连接，支持指定地址、数据库、集合、用户名/密码或 Token、TLS、CA、证书 server name、连接超时与操作超时。每个命令持有并关闭自身的客户端；没有自动建库或随 Web 启动建集合的行为。
+Milvus 通过单独工厂建立连接，支持指定地址、数据库、集合、用户名/密码、TLS、连接超时与操作超时。每个命令持有并关闭自身的客户端；没有自动建库或随 Web 启动建集合的行为。
 
 `internal/service/knowledge` 直接使用 SDK，满足 Eino v0.6.0 的 `indexer.Indexer` 和 `retriever.Retriever` 接口。Store 使用 Upsert 写入文档，支持自动生成字符串 ID；Retrieve 支持 topK 与分数阈值。集合和 Embedder 由构造函数传入，不使用全局连接变量或运行时 mock 模式。
 
@@ -42,7 +42,7 @@ Milvus 通过单独工厂建立连接，支持指定地址、数据库、集合�
 - 验收记录 ID：`check_b8a4920d5d00efc38e62168043837bf2`。
 - 检索得分 **0.9988304376602173**，`matched=true`，来源 metadata 已核对，记录保留。得分受真实模型输出影响，不要求恰好为 1。
 
-自动测试覆盖配置覆盖和 YAML 密钥拒绝、实际 Ark 组件请求格式、维度与数值校验、超时取消、SDK 数据库与认证 metadata、TLS 连接，以及集合初始化幂等性、结构不匹配时不修改、FLOAT_VECTOR/COSINE 写入与检索。
+自动测试覆盖配置覆盖和必要配置校验、实际 Ark 组件请求格式、维度与数值校验、超时取消、SDK 数据库与认证 metadata、TLS 连接，以及集合初始化幂等性、结构不匹配时不修改、FLOAT_VECTOR/COSINE 写入与检索。
 
 云端认证与云端 TLS 集成：**未执行**，当前实例使用无认证、TLS=false；对应客户端行为通过本地 gRPC 协议测试验证。真实普通聊天模型调用不在本阶段验收范围。
 

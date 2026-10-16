@@ -4,11 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/pem"
 	"net"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -32,61 +29,62 @@ func (server) GetVersion(context.Context, *milvuspb.GetVersionRequest) (*milvusp
 	return &milvuspb.GetVersionResponse{Status: &commonpb.Status{}, Version: "v2.4.1"}, nil
 }
 
-func TestSDKAuthenticationDatabaseAndTLS(t *testing.T) {
-	for _, mode := range []string{"none", "password", "token", "tls"} {
-		t.Run(mode, func(t *testing.T) {
-			cfg := config.Milvus{Database: "other_db", Collection: "test", Timeout: time.Second, ConnectTimeout: time.Second}
-			wantAuth := ""
-			if mode == "password" {
-				cfg.Username = "user"
-				cfg.Password = "fixture-password"
-				wantAuth = base64.StdEncoding.EncodeToString([]byte("user:fixture-password"))
+func TestSDKAuthenticationAndDatabase(t *testing.T) {
+	for _, password := range []bool{false, true} {
+		cfg := config.Milvus{Database: "other_db", Collection: "test", ConnectTimeout: time.Second, Timeout: time.Second}
+		wantAuth := ""
+		if password {
+			cfg.Username = "user"
+			cfg.Password = "fixture-password"
+			wantAuth = base64.StdEncoding.EncodeToString([]byte("user:fixture-password"))
+		}
+		s := grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			md, _ := metadata.FromIncomingContext(ctx)
+			if dbs := md.Get("dbname"); len(dbs) != 1 || dbs[0] != "other_db" {
+				t.Error("database metadata was not propagated")
 			}
-			if mode == "token" {
-				cfg.Token = "fixture-token"
-				wantAuth = base64.StdEncoding.EncodeToString([]byte(cfg.Token))
+			auth := md.Get("authorization")
+			if (wantAuth == "" && len(auth) != 0) || (wantAuth != "" && (len(auth) != 1 || auth[0] != wantAuth)) {
+				t.Error("incorrect authentication metadata")
 			}
-			options := []grpc.ServerOption{grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-				md, _ := metadata.FromIncomingContext(ctx)
-				if dbs := md.Get("dbname"); len(dbs) != 1 || dbs[0] != "other_db" {
-					t.Error("database metadata was not propagated")
-				}
-				auth := md.Get("authorization")
-				if wantAuth != "" && (len(auth) != 1 || auth[0] != wantAuth) {
-					t.Error("incorrect authentication metadata")
-				}
-				return handler(ctx, req)
-			})}
-			if mode == "tls" {
-				h := httptest.NewTLSServer(nil)
-				cert := h.TLS.Certificates[0]
-				h.Close()
-				cfg.TLS = true
-				cfg.ServerName = "example.com"
-				cfg.CAFile = filepath.Join(t.TempDir(), "ca.pem")
-				if err := os.WriteFile(cfg.CAFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0600); err != nil {
-					t.Fatal(err)
-				}
-				options = append(options, grpc.Creds(credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})))
-			}
-			listener, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
-			}
-			s := grpc.NewServer(options...)
-			milvuspb.RegisterMilvusServiceServer(s, &server{})
-			go s.Serve(listener)
-			t.Cleanup(s.Stop)
-			cfg.Address = listener.Addr().String()
-			c, err := client.NewMilvus(context.Background(), cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			v, err := c.GetVersion(context.Background())
-			if err != nil || v != "v2.4.1" {
-				t.Fatalf("SDK call failed: %v", err)
-			}
-		})
+			return handler(ctx, req)
+		}))
+		milvuspb.RegisterMilvusServiceServer(s, &server{})
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		go s.Serve(listener)
+		t.Cleanup(s.Stop)
+		cfg.Address = listener.Addr().String()
+		c, err := client.NewMilvus(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err := c.GetVersion(context.Background())
+		c.Close()
+		if err != nil || v != "v2.4.1" {
+			t.Fatalf("SDK call failed: %v", err)
+		}
+	}
+}
+
+func TestTLSRejectsUntrustedCertificate(t *testing.T) {
+	h := httptest.NewTLSServer(nil)
+	cert := h.TLS.Certificates[0]
+	h.Close()
+	s := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})))
+	milvuspb.RegisterMilvusServiceServer(s, &server{})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go s.Serve(listener)
+	defer s.Stop()
+	cfg := config.Milvus{Address: listener.Addr().String(), Database: "default", Collection: "test", TLS: true, ConnectTimeout: 200 * time.Millisecond, Timeout: time.Second}
+	c, err := client.NewMilvus(context.Background(), cfg)
+	if err == nil {
+		c.Close()
+		t.Fatal("TLS must reject an untrusted certificate")
 	}
 }

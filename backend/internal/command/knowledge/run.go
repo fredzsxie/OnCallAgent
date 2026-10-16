@@ -29,7 +29,7 @@ func Run(ctx context.Context, mode string, out io.Writer) error {
 		return err
 	}
 	if mode == "milvus_check" {
-		cfg, err := config.LoadMilvus(ctx)
+		cfg, err := config.LoadMilvus()
 		if err != nil {
 			return err
 		}
@@ -53,7 +53,7 @@ func Run(ctx context.Context, mode string, out io.Writer) error {
 	if mode != "embedding_check" && mode != "init_knowledge" && mode != "knowledge_check" {
 		return errors.New("unknown knowledge command")
 	}
-	cfg, err := config.LoadEmbedding(ctx)
+	cfg, err := config.LoadEmbedding()
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func Run(ctx context.Context, mode string, out io.Writer) error {
 	if mode == "embedding_check" {
 		return json.NewEncoder(out).Encode(map[string]any{"configured_model": cfg.Model, "dimension": dimension, "available": true})
 	}
-	milvusCfg, err := config.LoadMilvus(ctx)
+	milvusCfg, err := config.LoadMilvus()
 	if err != nil {
 		return err
 	}

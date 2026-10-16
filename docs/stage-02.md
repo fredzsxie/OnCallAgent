@@ -45,7 +45,7 @@ ChatReq(Id, Question)
 
 Web 入口和独立模型检查命令先调用 `config.LoadEnv`，把 `.env` 中尚未存在的变量载入进程环境。优先查找工作目录的 `.env`，不存在时查找 `backend/.env`；只加载第一份存在的文件。已有进程环境变量不会被覆盖。
 
-`chat_model.base_url`、`chat_model.model`、`chat_model.timeout` 从 GoFrame 配置读取，再显式应用对应 `ONCALL_CHAT_MODEL_*` 环境变量。最终优先级为进程原有变量、`.env`、YAML、默认值。API Key 只从 `ONCALL_CHAT_MODEL_API_KEY` 读取（可由 `.env` 注入）；YAML 的 `chat_model.api_key` 字段会被拒绝。
+配置直接读取 `ONCALL_CHAT_MODEL_BASE_URL`、`ONCALL_CHAT_MODEL_MODEL`、`ONCALL_CHAT_MODEL_TIMEOUT`。优先级为已有进程环境变量、`.env`、默认值。API Key 通过 `ONCALL_CHAT_MODEL_API_KEY` 提供。
 
 `.env` 解析使用 `godotenv v1.5.1`。未找到文件不报错，存在但格式有误时返回不含原始内容的错误。之前仅填写 `.env` 仍报 Base URL 无效，是因为文件没有被加载，校验实际读到的是空配置；现在空地址会明确提示设置 `ONCALL_CHAT_MODEL_BASE_URL`。
 
@@ -53,7 +53,7 @@ Web 入口和独立模型检查命令先调用 `config.LoadEnv`，把 `.env` 中
 
 ## 验收范围
 
-`test/config` 验证配置加载、环境变量覆盖、模型必填字段、超时和 YAML 密钥拒绝。`test/chat` 启动本地协议端点和实际 GoFrame 路由，验证请求/响应契约、模型 ID、Bearer 认证、客户端复用、输入校验、502/504 及从 HTTP 请求到模型请求的取消传播。
+`test/config` 验证配置加载、环境变量覆盖、模型必填字段和超时。`test/chat` 启动本地协议端点和实际 GoFrame 路由，验证请求/响应契约、模型 ID、Bearer 认证、客户端复用、输入校验、502/504 及从 HTTP 请求到模型请求的取消传播。
 
 完整启动、模型配置和 curl 命令见根目录 README。没有提供真实模型连接信息或凭据，本次不执行真实服务商集成，密钥仅从环境变量读取。
 
@@ -73,4 +73,4 @@ Web 入口和独立模型检查命令先调用 `config.LoadEnv`，把 `.env` 中
 
 真实服务商的模型 ID、鉴权和聊天接口集成测试：**未执行（未提供连接信息及凭据）**。模型检查功能已通过本地协议测试，不能将这些结果表述为真实模型已连接。
 
-`.env` 加载修复验收（2026-10-15）：配置优先级、文件查找、带引号的值和错误脱敏测试，以及全部聊天回归与竞态检测通过；静态检查及两个入口构建通过。本地协议端点验证了两个入口均能仅通过 `.env` 获取模型配置；现有 `backend/.env` 也已用于成功启动服务并访问 health。此次未调用真实模型，未修改本地 `.env` 或 YAML 配置。
+`.env` 加载修复验收（2026-10-15）：配置优先级、文件查找、带引号的值和错误脱敏测试，以及全部聊天回归与竞态检测通过；静态检查及两个入口构建通过。本地协议端点验证了两个入口均能仅通过 `.env` 获取模型配置；现有 `backend/.env` 也已用于成功启动服务并访问 health。此次未调用真实模型，保留了本地 `.env` 配置。

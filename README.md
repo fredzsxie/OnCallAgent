@@ -16,7 +16,6 @@ backend/
 ├── utility/
 │   ├── client/             # 聊天、Ark Embedding 和 Milvus 客户端
 │   └── middleware/         # message/data 统一响应及状态码
-├── manifest/config/        # GoFrame 配置
 └── test/                   # 所有测试文件和本地协议测试
 ```
 
@@ -31,7 +30,7 @@ cd OnCallAgent/backend
 GOTOOLCHAIN=local go run .
 ```
 
-普通配置也可填写在 `backend/manifest/config/config.yaml`，或继续使用已导出的环境变量；密钥通过进程环境或 `.env` 提供：
+配置统一通过 `.env` 或进程环境变量提供：
 
 ```bash
 cd OnCallAgent/backend
@@ -42,19 +41,19 @@ export ONCALL_CHAT_MODEL_TIMEOUT='30s'
 GOTOOLCHAIN=local go run .
 ```
 
-Base URL 通常以 `/v1` 结尾，具体以服务商为准；不要填写完整的 `/chat/completions` 地址。API Key 不允许放在 YAML 中。未提供有效配置时服务会在启动前报错。
+Base URL 通常以 `/v1` 结尾，具体以服务商为准；不要填写完整的 `/chat/completions` 地址。密钥只通过 `.env` 或进程环境提供。未提供有效配置时服务会在启动前报错。
 
 Web 服务和独立模型检查命令都会在读取配置前自动加载 `.env`：优先使用当前工作目录的 `.env`，不存在时查找 `backend/.env`，只加载第一份存在的文件。文件不存在时允许仅通过进程环境配置；文件存在但语法错误时明确报错。`.env` 已由 `.gitignore` 排除。
 
-| YAML 字段 | 环境变量 | 默认值 |
-| --- | --- | --- |
-| `server.port` | `ONCALL_SERVER_PORT` | 6872 |
-| `chat_model.base_url` | `ONCALL_CHAT_MODEL_BASE_URL` | 必填 |
-| `chat_model.model` | `ONCALL_CHAT_MODEL_MODEL` | 必填 |
-| 不接受 YAML 密钥 | `ONCALL_CHAT_MODEL_API_KEY` | 必填 |
-| `chat_model.timeout` | `ONCALL_CHAT_MODEL_TIMEOUT` | 30s |
+| 环境变量 | 默认值 |
+| --- | --- |
+| `ONCALL_SERVER_PORT` | 6872 |
+| `ONCALL_CHAT_MODEL_BASE_URL` | 必填 |
+| `ONCALL_CHAT_MODEL_MODEL` | 必填 |
+| `ONCALL_CHAT_MODEL_API_KEY` | 必填 |
+| `ONCALL_CHAT_MODEL_TIMEOUT` | 30s |
 
-配置优先级为：**已有进程环境变量 > `.env` > YAML > 默认值**。`.env` 不覆盖已导出的变量，包括空值；空的必填字段、非法端口、非正数或无法解析的超时都会被拒绝。端口范围为 1–65535，超时支持 `750ms`、`30s` 等格式。
+配置优先级为：**已有进程环境变量 > `.env` > 默认值**。`.env` 不覆盖已导出的变量，包括空值；空的必填字段、非法端口、非正数或无法解析的超时都会被拒绝。端口范围为 1–65535，超时支持 `750ms`、`30s` 等格式。
 
 模型客户端在启动时创建一次，多个请求复用同一个 Eino ChatModel 和 HTTP 连接池。每次请求传递原始 context，再附加配置中的超时；退出后关闭空闲模型连接。
 
@@ -129,27 +128,23 @@ GOTOOLCHAIN=local go build -o bin/modelcheck ./cmd/modelcheck
 
 当前支持云端 Milvus 2.4.x，以及豆包 `doubao-embedding-vision-251215` 的文本向量化。使用 Eino Ark Embedding **v0.1.2**、Milvus Go SDK **v2.4.2**；Go 1.23.12、GoFrame 和 Eino 版本保持不变。
 
-配置示例见 `backend/.env.example` 和 `backend/manifest/config/config.example.yaml`。将实际地址和密钥填入已忽略的 `backend/.env`，不要直接覆盖已有的聊天配置。下面的命令只读取所需的配置，不需要聊天模型凭据。
+配置示例见 `backend/.env.example`。将实际地址和密钥填入已忽略的 `backend/.env`，不要直接覆盖已有的聊天配置。下面的命令只读取所需的配置，不需要聊天模型凭据。
 
-| YAML 字段 | 环境变量 | 默认值 |
-| --- | --- | --- |
-| `embedding.base_url` | `ONCALL_EMBEDDING_BASE_URL` | `https://ark.cn-beijing.volces.com/api/v3` |
-| `embedding.model` | `ONCALL_EMBEDDING_MODEL` | `doubao-embedding-vision-251215` |
-| 不接受 YAML 密钥 | `ONCALL_EMBEDDING_API_KEY` 或 `ARK_API_KEY` | 必填 |
-| `embedding.timeout` | `ONCALL_EMBEDDING_TIMEOUT` | `30s` |
-| `embedding.dimensions` | `ONCALL_EMBEDDING_DIMENSIONS` | `0`，探测实际维度 |
-| `milvus.address` | `ONCALL_MILVUS_ADDRESS` | `localhost:19530` |
-| `milvus.database` | `ONCALL_MILVUS_DATABASE` | `default` |
-| `milvus.collection` | `ONCALL_MILVUS_COLLECTION` | `oncall_knowledge` |
-| `milvus.tls` | `ONCALL_MILVUS_TLS` | `false` |
-| `milvus.ca_file` | `ONCALL_MILVUS_CA_FILE` | 空，使用系统 CA |
-| `milvus.server_name` | `ONCALL_MILVUS_SERVER_NAME` | 空，使用连接地址校验证书 |
-| `milvus.connect_timeout` | `ONCALL_MILVUS_CONNECT_TIMEOUT` | `5s` |
-| `milvus.timeout` | `ONCALL_MILVUS_TIMEOUT` | `60s` |
-| 不接受 YAML 认证 | `ONCALL_MILVUS_USERNAME` / `ONCALL_MILVUS_PASSWORD` | 不认证 |
-| 不接受 YAML 认证 | `ONCALL_MILVUS_TOKEN` | 不认证，与用户名/密码互斥 |
+| 环境变量 | 默认值 |
+| --- | --- |
+| `ONCALL_EMBEDDING_BASE_URL` | `https://ark.cn-beijing.volces.com/api/v3` |
+| `ONCALL_EMBEDDING_MODEL` | `doubao-embedding-vision-251215` |
+| `ONCALL_EMBEDDING_API_KEY` 或 `ARK_API_KEY` | 必填 |
+| `ONCALL_EMBEDDING_TIMEOUT` | `30s` |
+| `ONCALL_MILVUS_ADDRESS` | `localhost:19530` |
+| `ONCALL_MILVUS_DATABASE` | `default` |
+| `ONCALL_MILVUS_COLLECTION` | `oncall_knowledge` |
+| `ONCALL_MILVUS_TLS` | `false` |
+| `ONCALL_MILVUS_CONNECT_TIMEOUT` | `5s` |
+| `ONCALL_MILVUS_TIMEOUT` | `60s` |
+| `ONCALL_MILVUS_USERNAME` / `ONCALL_MILVUS_PASSWORD` | 不认证 |
 
-环境变量显式覆盖 YAML，包括空值。`ONCALL_EMBEDDING_API_KEY` 若存在就优先于 `ARK_API_KEY`，显式空值会校验失败。`embedding.dimensions` 为正数时只断言实际输出长度，不向服务商请求降维。Base URL 填 API 根路径，不能包含完整的 `/embeddings/multimodal` 端点。Milvus 地址填 `host:port`，TLS 通过独立开关启用；支持系统 CA 或指定 CA，始终验证证书。当前不包含双向 TLS 客户端证书配置。
+所有配置直接从环境变量读取，包括显式空值。`ONCALL_EMBEDDING_API_KEY` 若存在就优先于 `ARK_API_KEY`，显式空值会校验失败。向量维度由模型实际返回值确定。Base URL 填 API 根路径，不能包含完整的 `/embeddings/multimodal` 端点。Milvus 地址填 `host:port`，TLS 通过独立开关启用；使用系统 CA 验证服务端证书，不支持自定义 CA、证书域名或双向 TLS。
 
 ```bash
 cd OnCallAgent/backend

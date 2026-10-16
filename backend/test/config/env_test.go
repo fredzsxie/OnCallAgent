@@ -1,7 +1,6 @@
 package config_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,8 +116,8 @@ func TestEnvPathMustBeFile(t *testing.T) {
 	}
 }
 
-func TestDotEnvValuesOverrideYAML(t *testing.T) {
-	setConfig(t, "server:\n  port: 6872")
+func TestDotEnvProvidesChatModelConfiguration(t *testing.T) {
+	setEnvironment(t)
 	changeDir(t, t.TempDir())
 	for _, key := range []string{"ONCALL_CHAT_MODEL_BASE_URL", "ONCALL_CHAT_MODEL_MODEL", "ONCALL_CHAT_MODEL_API_KEY"} {
 		unsetEnv(t, key)
@@ -127,11 +126,11 @@ func TestDotEnvValuesOverrideYAML(t *testing.T) {
 	if err := config.LoadEnv(); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.LoadChatModel(context.Background())
+	cfg, err := config.LoadChatModel()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.BaseURL != "https://env.example/v1" || cfg.Model != "env-model" || cfg.APIKey != "test-key#with=characters" {
-		t.Fatal(".env values did not override YAML or API key parsing failed")
+		t.Fatal(".env model settings or API key parsing failed")
 	}
 }

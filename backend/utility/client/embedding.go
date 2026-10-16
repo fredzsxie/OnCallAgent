@@ -23,9 +23,6 @@ type Embedding struct {
 var _ embedding.Embedder = (*Embedding)(nil)
 
 func NewEmbedding(ctx context.Context, cfg config.Embedding) (*Embedding, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
 	h := &http.Client{
 		Transport: http.DefaultTransport.(*http.Transport).Clone(), Timeout: cfg.Timeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
@@ -75,10 +72,7 @@ func (c *Embedding) EmbedStrings(ctx context.Context, texts []string, opts ...em
 	if len(vectors) != len(texts) {
 		return nil, errors.New("embedding response count does not match input")
 	}
-	dim := c.cfg.Dimensions
-	if dim == 0 {
-		dim = len(vectors[0])
-	}
+	dim := len(vectors[0])
 	for _, vector := range vectors {
 		if _, err := FloatVector(vector, dim); err != nil {
 			return nil, err

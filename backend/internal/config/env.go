@@ -10,7 +10,7 @@ import (
 )
 
 // LoadEnv loads local values before config parsing without replacing process variables.
-// Precedence: existing environment > .env > YAML > defaults.
+// Precedence: existing environment > .env > defaults.
 func LoadEnv() error {
 	// Load only the first file; backend/.env supports binaries launched from the repo root.
 	for _, path := range []string{".env", filepath.Join("backend", ".env")} {

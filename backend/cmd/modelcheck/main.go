@@ -23,7 +23,7 @@ func run() error {
 	if err := config.LoadEnv(); err != nil {
 		return err
 	}
-	cfg, err := config.LoadChatModel(gctx.New())
+	cfg, err := config.LoadChatModel()
 	if err != nil {
 		return err
 	}

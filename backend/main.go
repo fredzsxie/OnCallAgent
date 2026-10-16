@@ -20,7 +20,7 @@ func main() {
 		log.Fatal(err)
 	}
 	ctx := gctx.New()
-	cfg, err := config.Load(ctx)
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
