@@ -1,6 +1,6 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆和 SSE 对话接口。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
@@ -25,7 +25,7 @@ backend/
 
 当前及后续两个 Agent 的编排代码、组件适配和 Graph Schema 统一放在 `backend/internal/ai/agent/xxx_pipeline/`。当前知识入库图为 `knowledge_index_pipeline/`；共享知识库业务逻辑继续放在 `internal/service/knowledge/`，测试继续放在 `backend/test/`。
 
-后续前端代码放在根目录 `frontend/`，当前没有前端页面或运行时 mock 模式。
+前端代码位于根目录 `frontend/`，包含普通/流式聊天、停止生成、上传、新建会话与浏览器历史。所有测试继续放在 `backend/test/`；本地模型模拟仅用于验收，不是生产服务的运行模式。
 
 ## 配置与启动
 
@@ -302,3 +302,27 @@ curl -N http://127.0.0.1:6872/api/chat_stream \
 SSE 成功事件顺序为 `connected → message... → done`，失败为 `connected → error`。data 始终为 JSON，例如 `{"content":"第一行\n第二行"}`；结束后不追加统一 JSON。参数错误在流开始前仍返回 HTTP 400 JSON。connected 在等待锁和模型初始化前发出，回答片段保持第 6 步的模型轮次确认行为。
 
 完整事件定义、并发和过期规则、Postman 本地模拟命令及真实验收结果见 [第 7 步](docs/stage-07.md)。
+
+## 聊天前端（第 8 步）
+
+后端启动后，另开终端运行：
+
+```bash
+cd OnCallAgent/frontend
+./start.sh
+# 打开 http://127.0.0.1:8080
+
+# 自定义开发后端 origin 和前端端口
+ONCALL_API_ORIGIN=http://127.0.0.1:6872 ONCALL_FRONTEND_PORT=8080 ./start.sh
+```
+
+开发服务要求 Node.js 20+，无需 npm install；浏览器始终访问同源 `/api`，由开发代理转发，部署时改用同源反向代理。Markdown 库本地锁定为 Marked 18.1.1 和 DOMPurify 3.4.17；不使用运行时 CDN。公开的 `frontend/config.js` 可调整上传大小提示，默认 10 MiB，服务端最终校验。
+
+默认流式，可切换普通模式；Enter 发送、Shift+Enter 换行，生成中可停止。localStorage 保存的是浏览器展示记录，旧会话恢复原 Id，不能恢复过期或重启丢失的模型上下文；未完成回答有明确标记。上传文件进入共享知识库。
+
+```bash
+# 仓库根目录：默认前端测试不调用云端
+node --test backend/test/frontend/*.test.mjs
+```
+
+文件说明、部署示例见 [前端 README](frontend/README.md)；页面验收清单、本地 Postman 与真实集成命令、实际结果见 [第 8 步文档](docs/stage-08.md)。
