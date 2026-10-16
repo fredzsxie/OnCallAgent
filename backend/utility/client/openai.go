@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 )
@@ -72,3 +73,6 @@ func (c *OpenAI) Generate(ctx context.Context, question string) (string, error) 
 func (c *OpenAI) Close() {
 	c.http.CloseIdleConnections()
 }
+
+// ToolCallingModel shares the configured HTTP client without changing ordinary chat behavior.
+func (c *OpenAI) ToolCallingModel() model.ToolCallingChatModel { return c.model }
