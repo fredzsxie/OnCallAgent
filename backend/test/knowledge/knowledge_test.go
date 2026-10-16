@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ type fakeDB struct {
 	searchMetric     entity.MetricType
 	searchParam      entity.SearchParam
 	indexErr         error
+	deleteExpr       string
 }
 
 func (f *fakeDB) HasCollection(context.Context, string) (bool, error) { return f.exists, nil }
@@ -63,6 +65,14 @@ func (f *fakeDB) Upsert(_ context.Context, _, _ string, cols ...entity.Column) (
 	f.columns = cols
 	return cols[0], nil
 }
+func (f *fakeDB) Delete(ctx context.Context, _ string, _ string, expression string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	f.deleteExpr = expression
+	return nil
+}
+
 func (f *fakeDB) Search(ctx context.Context, _ string, _ []string, _ string, fields []string, vectors []entity.Vector, field string, metric entity.MetricType, k int, sp entity.SearchParam, _ ...client.SearchQueryOptionFunc) ([]client.SearchResult, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -205,5 +215,33 @@ func TestStoreRequiresExplicitInitialization(t *testing.T) {
 	f.schema = knowledge.Schema(cfg().Collection, 3)
 	if _, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err == nil || f.creates != 0 {
 		t.Fatal("store construction must not create an index")
+	}
+}
+
+func TestDeleteOldOnlyTargetsGeneratedHashes(t *testing.T) {
+	f := &fakeDB{}
+	if _, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err != nil {
+		t.Fatal(err)
+	}
+	store, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	documentID, version := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	if err := store.DeleteOld(context.Background(), documentID, version); err != nil {
+		t.Fatal(err)
+	}
+	expected := `metadata["document_id"] == "` + documentID + `" and metadata["version"] != "` + version + `"`
+	if f.deleteExpr != expected {
+		t.Fatalf("unexpected deletion expression: %s", f.deleteExpr)
+	}
+	f.deleteExpr = ""
+	if err := store.DeleteOld(context.Background(), `unsafe" or true`, version); err == nil || f.deleteExpr != "" {
+		t.Fatal("untrusted filter value accepted")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := store.DeleteOld(ctx, documentID, version); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation was lost: %v", err)
 	}
 }

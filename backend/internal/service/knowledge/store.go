@@ -112,12 +112,22 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 			return nil, err
 		}
 	}
-	_, err = s.db.Upsert(ctx, s.cfg.Collection, "",
+	written, err := s.db.Upsert(ctx, s.cfg.Collection, "",
 		entity.NewColumnVarChar("id", ids), entity.NewColumnVarChar("content", texts),
 		entity.NewColumnJSONBytes("metadata", metadata), entity.NewColumnFloatVector("vector", s.dimension, values))
 	if err != nil {
 		return nil, operationError(ctx, "upsert documents")
 	}
+	if written == nil || written.Len() != len(ids) {
+		return nil, errors.New("Milvus returned an incomplete upsert result")
+	}
+	for i, id := range ids {
+		actual, err := written.GetAsString(i)
+		if err != nil || actual != id {
+			return nil, errors.New("Milvus returned unexpected upsert IDs")
+		}
+	}
+
 	return ids, nil
 }
 
@@ -194,4 +204,21 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 		docs = append(docs, (&schema.Document{ID: id, Content: text, MetaData: m}).WithScore(float64(r.Scores[i])))
 	}
 	return docs, nil
+}
+
+func (s *Store) DeleteOld(ctx context.Context, documentID, version string) error {
+	for _, value := range []string{documentID, version} {
+		decoded, err := hex.DecodeString(value)
+		if err != nil || len(decoded) != 32 {
+			return errors.New("document ID and version must be SHA-256 hashes")
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
+	defer cancel()
+	// Only generated hashes enter the filter, never filenames or document text.
+	expression := fmt.Sprintf(`metadata["document_id"] == "%s" and metadata["version"] != "%s"`, documentID, version)
+	if err := s.db.Delete(ctx, s.cfg.Collection, "", expression); err != nil {
+		return operationError(ctx, "delete old document chunks")
+	}
+	return nil
 }
