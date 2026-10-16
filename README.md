@@ -1,13 +1,13 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索和时间/内部文档工具，后续按需加入会话记忆及 Agent 问答。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排，后续按需加入会话记忆。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
 ├── main.go                  # 启动时创建并注入共享客户端和服务
-├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd 独立命令
+├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd、chat_cmd 独立命令
 ├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── ai/
@@ -252,3 +252,25 @@ GOTOOLCHAIN=local go run ./cmd/recall_cmd --tool query_internal_docs --input '{"
 ```
 
 列工具定义和调用时间工具不要求云端凭据。检索 CLI 不隐式初始化集合，配置错误或依赖失败会非零退出；无结果正常退出。完整工具输入输出、验收集合与实际得分见 [第 5 步](docs/stage-05.md)。
+
+
+## ChatAgent 对话编排
+
+独立对话图输入 `*UserMessage`（`id`、`query`、`history`），输出 `*schema.Message`。问题分别进入知识检索和对话参数分支，ChatTemplate 等待两条分支完成，再交给支持工具调用的 ReAct Agent。Agent 使用已有时间和内部文档工具；`POST /api/chat` 继续保持普通单轮聊天行为。
+
+| 环境变量 | 默认值 |
+| --- | --- |
+| `ONCALL_CHAT_AGENT_MAX_STEPS` | 12，ReAct 内部图执行步数 |
+| `ONCALL_CHAT_AGENT_TIMEOUT` | 60s，首轮检索、模型与工具共享总预算 |
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run ./cmd/chat_cmd --query '认证失败后如何恢复？'
+GOTOOLCHAIN=local go run ./cmd/chat_cmd --query '现在几点？' --stream
+GOTOOLCHAIN=local go run ./cmd/chat_cmd --input '{"id":"demo","query":"恢复后如何验证？","history":[{"role":"user","content":"认证失败了"},{"role":"assistant","content":"请先刷新签名密钥缓存。"}]}'
+GOTOOLCHAIN=local go run ./cmd/chat_cmd --dev --dev-port 52538
+```
+
+普通模式输出 Message JSON；流式模式输出逐行 Message JSON。为兼容先输出正文再调用工具的模型，检查器会先确认当前模型轮次是否包含工具调用，确认是最终回答后再转发片段，因此回答片段会在该模型轮次完成后开始输出。调试模式可不传问题，注册后等待 SIGINT/SIGTERM；DevOps 日志写入 stderr。每次执行状态独立，ID 不用于保存历史。
+
+图与节点配置见 [Graph Schema](backend/internal/ai/agent/chat_pipeline/workflow.json)，完整契约、测试与真实验收记录见 [第 6 步](docs/stage-06.md)。
