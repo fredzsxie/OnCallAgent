@@ -1,0 +1,23 @@
+server:
+  port: 6872
+
+chat_model:
+  base_url: https://your-provider.example/v1
+  model: your-actual-model-id
+  timeout: 30s
+
+embedding:
+  base_url: https://ark.cn-beijing.volces.com/api/v3
+  model: doubao-embedding-vision-251215
+  timeout: 30s
+  dimensions: 0
+
+milvus:
+  address: localhost:19530
+  database: default
+  collection: oncall_knowledge
+  tls: false
+  ca_file: ""
+  server_name: ""
+  connect_timeout: 5s
+  timeout: 60s
