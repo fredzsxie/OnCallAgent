@@ -103,7 +103,7 @@ func TestGraphStableIDsAndUploadParity(t *testing.T) {
 	if entries, _ := os.ReadDir(cfg.Knowledge.FileDir); len(entries) != 0 {
 		t.Fatal("graph saved an upload copy")
 	}
-	service, err := knowledge.NewKnowledgeService(cfg.Knowledge, store)
+	service, err := testutil.NewKnowledgeService(cfg.Knowledge, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestGraphCancellationAndSharedSourceLock(t *testing.T) {
 		t.Fatal("store was not called")
 	}
 	// Uploads and separate graphs must wait on the same source lock.
-	service, err := knowledge.NewKnowledgeService(cfg.Knowledge, store)
+	service, err := testutil.NewKnowledgeService(cfg.Knowledge, store)
 	if err != nil {
 		t.Fatal(err)
 	}

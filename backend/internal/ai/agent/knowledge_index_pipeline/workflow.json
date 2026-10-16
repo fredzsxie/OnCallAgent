@@ -49,7 +49,7 @@
           "title": "[]*schema.Document"
         },
         "config": {
-          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
+          "description": "Root and limits are injected through knowledge_index_pipeline.Config. Optional WithLogicalSource call option overrides metadata only; physical path and file checks always apply.",
           "schema": {
             "type": "object",
             "properties": {}

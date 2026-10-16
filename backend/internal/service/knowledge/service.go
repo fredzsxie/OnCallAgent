@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
@@ -20,7 +21,11 @@ var (
 	ErrTooLarge          = errors.New("file is too large")
 	ErrUnsupportedFormat = errors.New("unsupported file format")
 	ErrRetryable         = errors.New("knowledge ingestion failed; retry the upload")
+	ErrSave              = errors.New("file save failed")
+	ErrIngest            = errors.New("knowledge graph ingestion failed")
 )
+
+type IndexFileFunc func(context.Context, document.Source, string) ([]string, error)
 
 type DocumentStore interface {
 	Store(context.Context, []*schema.Document, ...indexer.Option) ([]string, error)
@@ -37,18 +42,18 @@ type Result struct {
 }
 
 type KnowledgeService struct {
-	cfg   config.Knowledge
-	store DocumentStore
+	cfg       config.Knowledge
+	indexFile IndexFileFunc
 }
 
-func NewKnowledgeService(cfg config.Knowledge, store DocumentStore) (*KnowledgeService, error) {
+func NewKnowledgeService(cfg config.Knowledge, indexFile IndexFileFunc) (*KnowledgeService, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	if store == nil {
-		return nil, errors.New("document store is required")
+	if indexFile == nil {
+		return nil, errors.New("file indexer is required")
 	}
-	return &KnowledgeService{cfg: cfg, store: store}, nil
+	return &KnowledgeService{cfg: cfg, indexFile: indexFile}, nil
 }
 
 func Supported(source string) bool {
@@ -70,42 +75,49 @@ func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.R
 	if err != nil {
 		return Result{}, err
 	}
-	unlock, err := LockSource(ctx, source)
+	// Uploads lock the entire save/invoke operation; the graph uses a separate write lock.
+	unlock, err := lockSource(ctx, source, &uploadLocks)
 	if err != nil {
-		return Result{}, err
+		return Result{}, errors.Join(ErrIngest, err)
 	}
 	defer unlock()
 	data, err := ReadDocument(ctx, input, s.cfg.MaxUploadBytes)
 	if err != nil {
+		if errors.Is(err, ErrRetryable) {
+			return Result{}, errors.Join(ErrSave, err)
+		}
 		return Result{}, err
 	}
 	hash := digest(string(data))
-	docs, err := Split(source, string(data), hash, s.cfg)
-	if err != nil {
-		return Result{}, err
-	}
 	savedPath, size, err := s.save(digest(source)+"_"+hash+strings.ToLower(path.Ext(source)), data)
 	if err != nil {
-		return Result{}, errors.Join(ErrRetryable, err)
+		return Result{}, errors.Join(ErrSave, ErrRetryable, err)
 	}
-	result := Result{filepath.Base(savedPath), savedPath, size, source, hash, len(docs)}
-	_, err = IndexChunks(ctx, s.store, docs, s.cfg.BatchSize)
-	return result, err
+	result := Result{FileName: filepath.Base(savedPath), FilePath: savedPath, FileSize: size, Source: source, ContentHash: hash}
+	ids, err := s.indexFile(ctx, document.Source{URI: savedPath}, source)
+	if err != nil {
+		return result, errors.Join(ErrIngest, ErrRetryable, err)
+	}
+	if len(ids) == 0 {
+		return result, errors.Join(ErrIngest, ErrRetryable, errors.New("graph returned no chunk IDs"))
+	}
+	result.ChunkCount = len(ids)
+	return result, nil
 }
 
 func (s *KnowledgeService) IngestFile(ctx context.Context, source, filename string) (result Result, err error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return result, errors.Join(ErrRetryable, err)
+		return result, errors.Join(ErrSave, ErrRetryable, err)
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			err = errors.Join(err, ErrRetryable, closeErr)
+			err = errors.Join(err, ErrSave, ErrRetryable, closeErr)
 		}
 	}()
 	info, err := file.Stat()
 	if err != nil {
-		return result, errors.Join(ErrRetryable, err)
+		return result, errors.Join(ErrSave, ErrRetryable, err)
 	}
 	if !info.Mode().IsRegular() {
 		return result, ErrInvalidDocument

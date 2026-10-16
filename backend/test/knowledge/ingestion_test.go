@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cloudwego/eino/components/document"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
@@ -39,7 +40,7 @@ func docIDs(store *testutil.MemoryStore) []string {
 }
 func ingestService(t *testing.T, cfg config.Knowledge, store *testutil.MemoryStore) *knowledge.KnowledgeService {
 	t.Helper()
-	service, err := knowledge.NewKnowledgeService(cfg, store)
+	service, err := testutil.NewKnowledgeService(cfg, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,8 +244,14 @@ func TestSavedDirectoryFailureCannotWriteVectors(t *testing.T) {
 	}
 	cfg.FileDir = file
 	store := &testutil.MemoryStore{}
-	service := ingestService(t, cfg, store)
-	if _, err := service.Ingest(context.Background(), "x.txt", strings.NewReader("valid")); !errors.Is(err, knowledge.ErrRetryable) || store.Calls != 0 {
+	service, err := knowledge.NewKnowledgeService(cfg, func(context.Context, document.Source, string) ([]string, error) {
+		t.Fatal("save failure called graph")
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Ingest(context.Background(), "x.txt", strings.NewReader("valid")); !errors.Is(err, knowledge.ErrSave) || store.Calls != 0 {
 		t.Fatal("save failure must stop ingestion")
 	}
 }

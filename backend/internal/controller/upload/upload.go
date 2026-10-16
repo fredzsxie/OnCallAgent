@@ -20,11 +20,11 @@ func (c *ControllerV1) Upload(ctx context.Context, _ *v1.UploadReq) (res *v1.Upl
 	}
 	input, err := file.Open()
 	if err != nil {
-		return nil, errors.Join(knowledge.ErrRetryable, err)
+		return nil, errors.Join(knowledge.ErrSave, knowledge.ErrRetryable, err)
 	}
 	defer func() {
 		if closeErr := input.Close(); closeErr != nil {
-			err = errors.Join(err, knowledge.ErrRetryable, closeErr)
+			err = errors.Join(err, knowledge.ErrSave, knowledge.ErrRetryable, closeErr)
 		}
 	}()
 	result, err := c.service.Ingest(ctx, knowledge.UploadName(file.Filename), input)

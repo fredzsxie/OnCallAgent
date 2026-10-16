@@ -13,6 +13,7 @@ import (
 )
 
 var sourceLocks sync.Map
+var uploadLocks sync.Map
 
 func NormalizeSource(source string) (string, error) {
 	source = strings.ReplaceAll(source, "\\", "/")
@@ -31,9 +32,16 @@ func NormalizeSource(source string) (string, error) {
 	return source, nil
 }
 
-// Share source locks across upload services and graph instances in this process.
+// Share write locks across graph instances without reacquiring an upload's save/invoke lock.
 func LockSource(ctx context.Context, source string) (func(), error) {
-	value, _ := sourceLocks.LoadOrStore(digest(source), make(chan struct{}, 1))
+	return lockSource(ctx, source, &sourceLocks)
+}
+
+func lockSource(ctx context.Context, source string, locks *sync.Map) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	value, _ := locks.LoadOrStore(digest(source), make(chan struct{}, 1))
 	lock := value.(chan struct{})
 	select {
 	case lock <- struct{}{}:

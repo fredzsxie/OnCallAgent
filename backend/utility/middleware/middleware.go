@@ -26,7 +26,19 @@ func ResponseMiddleware(r *ghttp.Request) {
 		// Map failure categories to public messages without echoing upstream error details.
 		status := http.StatusInternalServerError
 		message = "internal server error"
+		data = nil
 		switch {
+		case errors.Is(err, context.Canceled):
+			status, message = http.StatusRequestTimeout, "request cancelled"
+		case errors.Is(err, knowledge.ErrSave):
+			status, message = http.StatusInternalServerError, "file save failed"
+			data = map[string]any{"stage": "save", "retryable": true}
+		case errors.Is(err, knowledge.ErrIngest) && errors.Is(err, context.DeadlineExceeded):
+			status, message = http.StatusGatewayTimeout, "knowledge ingestion timed out"
+			data = map[string]any{"stage": "ingest", "retryable": true}
+		case errors.Is(err, knowledge.ErrIngest):
+			status, message = http.StatusServiceUnavailable, "knowledge ingestion failed; retry the upload"
+			data = map[string]any{"stage": "ingest", "retryable": true}
 		case errors.Is(err, knowledge.ErrTooLarge):
 			status, message = http.StatusRequestEntityTooLarge, "file is too large"
 		case errors.Is(err, knowledge.ErrUnsupportedFormat):
@@ -44,8 +56,6 @@ func ResponseMiddleware(r *ghttp.Request) {
 			status, message = http.StatusBadRequest, "invalid request"
 		case errors.Is(err, context.DeadlineExceeded):
 			status, message = http.StatusGatewayTimeout, "model request timed out"
-		case errors.Is(err, context.Canceled):
-			status, message = http.StatusRequestTimeout, "request cancelled"
 		case errors.Is(err, client.ErrModelRequest):
 			status, message = http.StatusBadGateway, "model request failed"
 		}

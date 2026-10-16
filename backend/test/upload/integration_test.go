@@ -19,6 +19,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
+	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/joho/godotenv"
 	milvus "github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -44,7 +45,7 @@ func (s *failingBatch) Store(ctx context.Context, docs []*schema.Document, opts 
 
 func TestUploadIntegration(t *testing.T) {
 	if os.Getenv("ONCALL_INTEGRATION") != "1" {
-		t.Skip("set ONCALL_INTEGRATION=1 to upload real embeddings and retain stage04 records")
+		t.Skip("set ONCALL_INTEGRATION=1 to upload real embeddings and retain stage04_2 records")
 	}
 	values, err := godotenv.Read(filepath.Join("..", "..", ".env"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -85,7 +86,7 @@ func TestUploadIntegration(t *testing.T) {
 	}
 	injected := &failingBatch{DocumentStore: store}
 	cfg := config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: 4096, ChunkSize: 96, ChunkOverlap: 12, BatchSize: 2}
-	service, err := knowledge.NewKnowledgeService(cfg, injected)
+	service, err := testutil.NewKnowledgeService(cfg, injected)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestUploadIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := "stage04_acceptance_" + unique + ".md"
+	source := "stage04_2_acceptance_" + unique + ".md"
 	docSum := sha256.Sum256([]byte(source))
 	docID := hex.EncodeToString(docSum[:])
 	query := func() (ids []string, versions map[string]bool) {

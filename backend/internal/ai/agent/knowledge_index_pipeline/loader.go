@@ -13,6 +13,12 @@ import (
 
 type fileLoader struct{ cfg Config }
 
+type loaderOptions struct{ logicalSource *string }
+
+func WithLogicalSource(source string) document.LoaderOption {
+	return document.WrapLoaderImplSpecificOptFn(func(o *loaderOptions) { o.logicalSource = &source })
+}
+
 func newLoader(_ context.Context, cfg Config) (document.Loader, error) {
 	cfg, err := cfg.validate()
 	if err != nil {
@@ -23,7 +29,7 @@ func newLoader(_ context.Context, cfg Config) (document.Loader, error) {
 
 func (*fileLoader) GetType() string { return "FileLoader" }
 
-func (l *fileLoader) Load(ctx context.Context, src document.Source, _ ...document.LoaderOption) ([]*schema.Document, error) {
+func (l *fileLoader) Load(ctx context.Context, src document.Source, opts ...document.LoaderOption) ([]*schema.Document, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -70,6 +76,14 @@ func (l *fileLoader) Load(ctx context.Context, src document.Source, _ ...documen
 	data, readErr := knowledge.ReadDocument(ctx, file, l.cfg.Knowledge.MaxUploadBytes)
 	if readErr != nil {
 		return nil, readErr
+	}
+	// A versioned physical filename must not change the logical document's identity.
+	options := document.GetLoaderImplSpecificOptions[loaderOptions](nil, opts...)
+	if options.logicalSource != nil {
+		source, err = knowledge.NormalizeSource(*options.logicalSource)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return []*schema.Document{{Content: string(data), MetaData: map[string]any{"source": source}}}, nil
 }

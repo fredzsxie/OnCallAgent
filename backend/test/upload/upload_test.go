@@ -61,7 +61,7 @@ func startAPI(t *testing.T, service *knowledge.KnowledgeService, max int64) stri
 
 func localAPI(t *testing.T, store *testutil.MemoryStore, max int64) string {
 	t.Helper()
-	service, err := knowledge.NewKnowledgeService(config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: max, ChunkSize: 20, ChunkOverlap: 4, BatchSize: 2}, store)
+	service, err := testutil.NewKnowledgeService(config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: max, ChunkSize: 20, ChunkOverlap: 4, BatchSize: 2}, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,8 +222,9 @@ func TestUploadRetryableErrors(t *testing.T) {
 			body := uploadFile(t, api, "a.md", "valid document", tc.status)
 			var data struct {
 				Retryable bool `json:"retryable"`
+ Stage string `json:"stage"`
 			}
-			if err := json.Unmarshal(body.Data, &data); err != nil || !data.Retryable {
+			if err := json.Unmarshal(body.Data, &data); err != nil || !data.Retryable || data.Stage != "ingest" {
 				t.Fatalf("not retryable: %s", body.Data)
 			}
 		})

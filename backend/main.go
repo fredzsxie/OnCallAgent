@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 
+	knowledgepipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
@@ -68,7 +70,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	knowledgeService, err := knowledge.NewKnowledgeService(knowledgeCfg, store)
+	if err := os.MkdirAll(knowledgeCfg.FileDir, 0700); err != nil {
+		return err
+	}
+	knowledgeCfg.FileDir, err = filepath.EvalSymlinks(knowledgeCfg.FileDir)
+	if err != nil {
+		return err
+	}
+	graph, err := knowledgepipeline.BuildKnowledgeIndexing(ctx, knowledgepipeline.Config{Root: knowledgeCfg.FileDir, Knowledge: knowledgeCfg}, store)
+	if err != nil {
+		return err
+	}
+	knowledgeService, err := knowledge.NewKnowledgeService(knowledgeCfg, knowledgepipeline.NewFileIndexer(graph))
 	if err != nil {
 		return err
 	}
