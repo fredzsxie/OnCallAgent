@@ -136,7 +136,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	if options.Index != nil || options.SubIndex != nil || options.Embedding != nil || len(options.DSLInfo) != 0 {
 		return nil, errors.New("index, sub-index, embedder and DSL overrides are unsupported")
 	}
-	topK := 5
+	topK := config.DefaultRetrievalTopK
 	if options.TopK != nil {
 		topK = *options.TopK
 	}

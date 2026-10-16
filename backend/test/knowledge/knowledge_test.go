@@ -20,16 +20,18 @@ import (
 
 type fakeDB struct {
 	client.Client
-	exists           bool
-	schema           *entity.Schema
-	index            entity.Index
-	loaded           bool
-	creates, upserts int
-	columns          []entity.Column
-	searchMetric     entity.MetricType
-	searchParam      entity.SearchParam
-	indexErr         error
-	deleteExpr       string
+	exists               bool
+	schema               *entity.Schema
+	index                entity.Index
+	loaded               bool
+	creates, upserts     int
+	columns              []entity.Column
+	searchCalls, searchK int
+	searchVectors        []entity.Vector
+	searchMetric         entity.MetricType
+	searchParam          entity.SearchParam
+	indexErr             error
+	deleteExpr           string
 }
 
 func (f *fakeDB) HasCollection(context.Context, string) (bool, error) { return f.exists, nil }
@@ -80,6 +82,8 @@ func (f *fakeDB) Search(ctx context.Context, _ string, _ []string, _ string, fie
 	if field != "vector" || !reflect.DeepEqual(fields, []string{"content", "metadata"}) || len(vectors) != 1 {
 		return nil, errors.New("invalid search arguments")
 	}
+	f.searchCalls++
+	f.searchK, f.searchVectors = k, vectors
 	f.searchMetric, f.searchParam = metric, sp
 	return []client.SearchResult{{ResultCount: 1, IDs: f.columns[0], Fields: client.ResultSet{f.columns[1], f.columns[2]}, Scores: []float32{1}}}, nil
 }
