@@ -1,14 +1,14 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，以及豆包 Embedding 和 Milvus 向量存取，后续按需加入会话记忆、知识库问答和工具调用。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传和分批入库，后续按需加入会话记忆、知识库问答和工具调用。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
-├── main.go                  # 启动时创建一次模型客户端并注入 ChatService
+├── main.go                  # 启动时创建并注入共享客户端和服务
 ├── cmd/                     # modelcheck 和 init_knowledge 独立命令
-├── api/{health,chat}/v1/    # 请求和响应定义
+├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── config/             # 配置读取、环境变量覆盖和校验
 │   ├── controller/         # 接收 HTTP 请求，调用 service
@@ -23,10 +23,11 @@ backend/
 
 ## 配置与启动
 
-在 `backend/.env` 中填写 `backend/.env.example` 列出的变量，然后启动：
+在 `backend/.env` 中填写 `backend/.env.example` 列出的聊天、Embedding 和 Milvus 配置。首次启动前显式初始化集合：
 
 ```bash
 cd OnCallAgent/backend
+GOTOOLCHAIN=local go run ./cmd/init_knowledge
 GOTOOLCHAIN=local go run .
 ```
 
@@ -122,7 +123,7 @@ GOTOOLCHAIN=local go build -o bin/modelcheck ./cmd/modelcheck
 
 仅在核心逻辑中使用必要的英文注释，解释配置优先级、context 与超时传递、错误处理等设计原因；普通方法与直观判断不逐一注释。后续新增或修改核心逻辑时同步维护。
 
-实现说明见 `docs/stage-01.md`、`docs/stage-02.md` 和 `docs/stage-03.md`。
+实现说明见 `docs/stage-01.md`、`docs/stage-02.md` 、`docs/stage-03.md` 和 `docs/stage-04.md`。
 
 ## Milvus 与 Embedding
 
@@ -155,7 +156,7 @@ GOTOOLCHAIN=local go run ./cmd/init_knowledge
 
 集合保留四个字段：`id`（VARCHAR 主键，256 字节）、`content`（VARCHAR，65535 字节）、`metadata`（JSON）和 `vector`（FLOAT_VECTOR，实际维度）。索引为 HNSW/COSINE（M=16、efConstruction=128），检索显式使用 COSINE 与 Strong 一致性，ef=max(64, topK)。
 
-`utility/client` 负责创建 Ark 和 Milvus 客户端，调用方复用并关闭。`internal/service/knowledge` 保留 Eino `Store/Retrieve` 接口：Upsert 写入文档，检索支持 TopK 和分数阈值。Store 构造函数读取已有集合，不创建或加载集合。当前 Web 服务仍提供普通聊天，向量服务尚未接入 `/api/chat`。更换 Embedding 模型时应使用新集合，避免混用向量空间。
+`utility/client` 负责创建 Ark 和 Milvus 客户端，调用方复用并关闭。`internal/service/knowledge` 保留 Eino `Store/Retrieve` 接口：Upsert 写入文档，检索支持 TopK 和分数阈值。Store 构造函数读取已有集合，不创建或加载集合。Web 服务通过 `/api/upload` 写入知识库；`/api/chat` 仍提供普通单轮聊天。更换 Embedding 模型时应使用新集合，避免混用向量空间。
 
 三个独立检查/验收命令已移除，真实服务验证通过显式开启的集成测试完成：
 
@@ -173,3 +174,34 @@ ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
 集成测试读取 `backend/.env`，保留已有进程变量，核对现有集合 ID 未改变，再验证真实向量写入、检索、metadata 和 COSINE 得分。每次执行会新增并保留一条 `source=knowledge_integration` 的记录。没有配置真实凭据时，不启用该测试；不能把本地测试通过表述为云端验证通过。
 
 实现与验收记录见 `docs/stage-03.md`。
+
+## 知识上传
+
+`POST /api/upload` 接收一个 `file` 文件，支持 `.txt`、`.md`、`.markdown`，编码为 UTF-8。来源使用原始文件名，区分大小写；相同文件名的重复上传使用稳定片段 ID，修改内容后先写入完整新版本再清理旧片段。保存文件使用 hash 名称，旧文件保留。
+
+| 环境变量 | 默认值 |
+| --- | --- |
+| `ONCALL_FILE_DIR` | `./data/knowledge`，解析为绝对路径 |
+| `ONCALL_UPLOAD_MAX_BYTES` | 10485760（10 MiB） |
+| `ONCALL_KNOWLEDGE_CHUNK_SIZE` | 2000 UTF-8 字节，允许 4–65535 |
+| `ONCALL_KNOWLEDGE_CHUNK_OVERLAP` | 200 字节，非负且小于块大小 |
+| `ONCALL_KNOWLEDGE_BATCH_SIZE` | 16，必须为正 |
+
+切分识别 Markdown 标题，忽略代码围栏中的标题符号，块和重叠均不拆断字符，不跨标题重叠。元数据保留来源、标题、序号、片段与文档 hash、文档 ID 和版本。批量大小不改变片段 ID。
+
+```bash
+printf '# 值班手册\n检查健康状态，定位错误日志。\n' > /tmp/oncall-stage04.md
+curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.0.0.1:6872/api/upload
+# 重复上传：保存路径、hash、数量相同，Milvus 片段 ID 集合不变。
+curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.0.0.1:6872/api/upload
+```
+
+成功数据为 `fileName`（安全保存名）、`filePath`（真实绝对路径）、`fileSize`（实际字节数）、`source`、`contentHash`、`chunkCount`。响应仍为 `message/data`。无效或空文档返回 400，超限 413，格式不支持 415；保存、入库或旧版本清理失败返回 503，依赖超时 504，后两者带 `data.retryable=true`，可重复提交收敛。底层错误不会回显。
+
+同一来源在单进程内串行处理，不支持多个进程同时更新同一来源。失败期间允许暂时混合新旧片段；全部新批次确认前不会清理旧版本。完整约定与验收说明见 `docs/stage-04.md`。
+
+```bash
+# 显式连接云端，验证上传、重复、更新和分批失败后的重试；保留带标记的验收来源。
+ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
+  ./test/upload -run '^TestUploadIntegration$'
+```

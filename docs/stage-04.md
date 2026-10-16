@@ -27,3 +27,50 @@
 ## 核心验收
 
 本地配置及知识库测试、竞态检测通过：包含中文/emoji/长行切分、标题和围栏、稳定 ID、重复提交、文档更新、分批部分失败、清理失败与重试、读写失败、取消传播和删除筛选范围。默认测试不调用云端。
+
+## HTTP 接口
+
+`POST /api/upload` 使用 `multipart/form-data`，只允许一个 `file` 文件，扩展名支持 `.txt`、`.md`、`.markdown`，大小写不敏感。服务端先限制请求体（文件上限加 1 MiB multipart 开销），再检查 multipart 解析结果、文件数量和实际读取大小。编码必须为 UTF-8，空文件、纯空白和 NUL 字符被拒绝。
+
+成功返回 HTTP 200：
+
+```json
+{"message":"OK","data":{"fileName":"来源hash_内容hash.md","filePath":"/绝对路径/来源hash_内容hash.md","fileSize":42,"source":"guide.md","contentHash":"整文件SHA-256","chunkCount":1}}
+```
+
+| 情况 | 状态码 | data |
+| --- | --- | --- |
+| multipart、数量、空文档或编码错误 | 400 | null |
+| 文件或请求体超限 | 413 | null |
+| 不支持的扩展名或 Content-Type | 415 | null |
+| 保存、入库或清理失败 | 503 | `{"retryable":true}` |
+| 依赖调用超时 | 504 | `{"retryable":true}` |
+| 请求取消且还能写回响应 | 408 | null |
+
+控制器只负责取得文件并调用服务；统一中间件隐藏底层错误。启动时创建并复用 ChatModel、Embedding 和 Milvus 客户端，退出时关闭；需要预先执行 `init_knowledge`，Web 服务不会自动创建集合。聊天接口仍然是单轮聊天。
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run ./cmd/init_knowledge
+GOTOOLCHAIN=local go run .
+```
+
+在另一个终端执行上传和重复上传：
+
+```bash
+printf '# 值班手册\n检查健康状态，定位错误日志。\n' > /tmp/oncall-stage04.md
+curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.0.0.1:6872/api/upload
+curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.0.0.1:6872/api/upload
+```
+
+两次响应的保存路径、内容 hash、片段数量相同；向量主键集合不变。更新该文件内容后继续使用相同 `filename`，全部新片段写入成功后旧版本清理；原保存文件保留。不同文件名代表不同来源。
+
+```bash
+# 默认不连接云端。
+GOTOOLCHAIN=local go test -timeout 60s ./test/upload ./test/chat
+# 显式调用云端，保留 stage04_acceptance_<随机ID>.md 来源记录。
+ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
+  ./test/upload -run '^TestUploadIntegration$'
+```
+
+真实集成测试经过 HTTP 上传与实际 Ark/Milvus，查询确认重复上传的 ID 集合不变；第二批已写入但模拟丢失确认时旧版本仍完整，重试后仅保留新版本。使用随机来源隔离验收数据，不删除其他文档。
