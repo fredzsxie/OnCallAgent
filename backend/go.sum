@@ -44,6 +44,8 @@ github.com/cloudwego/eino-ext/components/embedding/ark v0.1.2 h1:mc+dFLiF8t0C0up
 github.com/cloudwego/eino-ext/components/embedding/ark v0.1.2/go.mod h1:sCcJvvx3/qb95LlvacRBt6YuvYkLGssaP7of3GzRrow=
 github.com/cloudwego/eino-ext/components/model/openai v0.1.1 h1:VRdUDcnfi/T8F0jcuovhdADU9Io/oMqiKpY2ZJTBc1o=
 github.com/cloudwego/eino-ext/components/model/openai v0.1.1/go.mod h1:VwAXEY1ik2K9KFPZvymnkfBQQKgLHbpg90yg+7hrTt8=
+github.com/cloudwego/eino-ext/devops v0.1.7 h1:w8q4SGDtrZk+8WUrLyVidX7GNsyWFsYPPz5HoJKgRcA=
+github.com/cloudwego/eino-ext/devops v0.1.7/go.mod h1:W53NPBmkmM7ClyQqwOcFUC2kV4bsvCfh2FtHUcyMzMY=
 github.com/cloudwego/eino-ext/libs/acl/openai v0.0.0-20250918130948-16e3a249e721 h1:5Hd8GxNEmu+ppTGCRBU6kLKfCQNXPMwi31xA83PzEqo=
 github.com/cloudwego/eino-ext/libs/acl/openai v0.0.0-20250918130948-16e3a249e721/go.mod h1:fHn/6OqPPY1iLLx9wzz+MEVT5Dl9gwuZte1oLEnCoYw=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
@@ -175,6 +177,8 @@ github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORR
 github.com/gopherjs/gopherjs v1.17.2 h1:fQnZVsXk8uxXIStYb0N4bGk7jeyTalG/wsZjQ25dO0g=
 github.com/gopherjs/gopherjs v1.17.2/go.mod h1:pRRIvn/QzFLrKfvEz3qUuEhtE/zLCWfreZ6J5gM2i+k=
 github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=
+github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
 github.com/gorilla/websocket v1.4.1/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.1 h1:gmztn0JnHVt9JZquRuzLw3g4wouNVzKL15iLr/zn/QY=
 github.com/gorilla/websocket v1.5.1/go.mod h1:x3kM2JMyaluk02fnUJpQuwD2dCS5NDG2ZHL0uE0tcaY=
@@ -244,6 +248,8 @@ github.com/mailru/easyjson v0.0.0-20190614124828-94de47d64c63/go.mod h1:C1wdFJiN
 github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
 github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
+github.com/matoous/go-nanoid v1.5.1 h1:aCjdvTyO9LLnTIi0fgdXhOPPvOHjpXN6Ik9DaNjIct4=
+github.com/matoous/go-nanoid v1.5.1/go.mod h1:zyD2a71IubI24efhpvkJz+ZwfwagzgSO6UNiFsZKN7U=
 github.com/mattn/go-colorable v0.1.2/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.8/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.11/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=
