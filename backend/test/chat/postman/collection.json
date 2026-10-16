@@ -1,0 +1,284 @@
+{
+  "info": {
+    "name": "OnCallAgent chat and SSE acceptance",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:6872"
+    }
+  ],
+  "item": [
+    {
+      "name": "Remember via Invoke",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \"remember:Aurora\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"ordinary response\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json()).to.eql({message:\"OK\",data:{answer:\"Aurora\"}});});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Recall via SSE",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \"recall\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frames = pm.response.text().trimEnd().split(/\\n\\n/).map(frame => { const lines = frame.split('\\n'); pm.expect(lines).to.have.length(2); return {event:lines[0].slice(7), data:JSON.parse(lines[1].slice(6))}; });",
+              "const names = frames.map(f => f.event);",
+              "pm.test('SSE framing and headers', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); pm.expect(names[0]).to.eql('connected'); pm.expect(pm.response.text().endsWith('\\n\\n')).to.eql(true); });",
+              "pm.test(\"shared memory\",()=>{pm.expect(names.at(-1)).to.eql(\"done\");pm.expect(frames.filter(f=>f.event===\"message\").map(f=>f.data.content).join(\"\")).to.eql(\"Aurora\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Session isolation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-b\", \"Question\": \"recall\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frames = pm.response.text().trimEnd().split(/\\n\\n/).map(frame => { const lines = frame.split('\\n'); pm.expect(lines).to.have.length(2); return {event:lines[0].slice(7), data:JSON.parse(lines[1].slice(6))}; });",
+              "const names = frames.map(f => f.event);",
+              "pm.test('SSE framing and headers', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); pm.expect(names[0]).to.eql('connected'); pm.expect(pm.response.text().endsWith('\\n\\n')).to.eql(true); });",
+              "pm.test(\"isolated history\",()=>{pm.expect(names.at(-1)).to.eql(\"done\");pm.expect(frames.filter(f=>f.event===\"message\").map(f=>f.data.content).join(\"\")).to.eql(\"unknown\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Multiline text",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-text\", \"Question\": \"multiline\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frames = pm.response.text().trimEnd().split(/\\n\\n/).map(frame => { const lines = frame.split('\\n'); pm.expect(lines).to.have.length(2); return {event:lines[0].slice(7), data:JSON.parse(lines[1].slice(6))}; });",
+              "const names = frames.map(f => f.event);",
+              "pm.test('SSE framing and headers', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); pm.expect(names[0]).to.eql('connected'); pm.expect(pm.response.text().endsWith('\\n\\n')).to.eql(true); });",
+              "pm.test(\"JSON text round trip\",()=>{pm.expect(names.at(-1)).to.eql(\"done\");pm.expect(frames.filter(f=>f.event===\"message\").map(f=>f.data.content).join(\"\")).to.eql(\"first\\nsecond \\\"quoted\\\" \\\\path\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Model error HTTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \"__error__\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"safe HTTP dependency error\",()=>{pm.response.to.have.status(502);pm.expect(pm.response.json().message).to.eql(\"chat agent execution failed\");pm.expect(pm.response.text()).not.to.include(\"fixture-private-error\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Model error SSE",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \"__error__\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frames = pm.response.text().trimEnd().split(/\\n\\n/).map(frame => { const lines = frame.split('\\n'); pm.expect(lines).to.have.length(2); return {event:lines[0].slice(7), data:JSON.parse(lines[1].slice(6))}; });",
+              "const names = frames.map(f => f.event);",
+              "pm.test('SSE framing and headers', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); pm.expect(names[0]).to.eql('connected'); pm.expect(pm.response.text().endsWith('\\n\\n')).to.eql(true); });",
+              "pm.test(\"terminal safe error\",()=>{pm.expect(names).to.eql([\"connected\",\"error\"]);pm.expect(frames[1].data.message).to.eql(\"chat agent execution failed\");pm.expect(pm.response.text()).not.to.include(\"fixture-private-error\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Model timeout SSE",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \"__timeout__\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frames = pm.response.text().trimEnd().split(/\\n\\n/).map(frame => { const lines = frame.split('\\n'); pm.expect(lines).to.have.length(2); return {event:lines[0].slice(7), data:JSON.parse(lines[1].slice(6))}; });",
+              "const names = frames.map(f => f.event);",
+              "pm.test('SSE framing and headers', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); pm.expect(names[0]).to.eql('connected'); pm.expect(pm.response.text().endsWith('\\n\\n')).to.eql(true); });",
+              "pm.test(\"terminal safe error\",()=>{pm.expect(names).to.eql([\"connected\",\"error\"]);pm.expect(frames[1].data.message).to.eql(\"model request timed out\");pm.expect(pm.response.text()).not.to.include(\"fixture-private-error\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Broken upstream SSE",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \"__broken_stream__\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frames = pm.response.text().trimEnd().split(/\\n\\n/).map(frame => { const lines = frame.split('\\n'); pm.expect(lines).to.have.length(2); return {event:lines[0].slice(7), data:JSON.parse(lines[1].slice(6))}; });",
+              "const names = frames.map(f => f.event);",
+              "pm.test('SSE framing and headers', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); pm.expect(names[0]).to.eql('connected'); pm.expect(pm.response.text().endsWith('\\n\\n')).to.eql(true); });",
+              "pm.test(\"terminal safe error\",()=>{pm.expect(names).to.eql([\"connected\",\"error\"]);pm.expect(frames[1].data.message).to.eql(\"chat agent execution failed\");pm.expect(pm.response.text()).not.to.include(\"fixture-private-error\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid SSE input",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/chat_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"Id\": \"postman-a\", \"Question\": \" \"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"validation remains HTTP JSON\",()=>{pm.response.to.have.status(400);pm.expect(pm.response.json().message).to.eql(\"invalid request\");pm.expect(pm.response.text()).not.to.include(\"event:\");});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
