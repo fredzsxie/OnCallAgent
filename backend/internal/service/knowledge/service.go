@@ -9,8 +9,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
-	"unicode/utf8"
 
 	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
@@ -41,7 +39,6 @@ type Result struct {
 type KnowledgeService struct {
 	cfg   config.Knowledge
 	store DocumentStore
-	locks sync.Map
 }
 
 func NewKnowledgeService(cfg config.Knowledge, store DocumentStore) (*KnowledgeService, error) {
@@ -68,40 +65,19 @@ func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.R
 	if input == nil {
 		return Result{}, ErrInvalidDocument
 	}
-	source = strings.ReplaceAll(source, "\\", "/")
-	if !utf8.ValidString(source) || len(source) > 4096 || source == "" || path.IsAbs(source) || strings.ContainsAny(source, "\x00\r\n") {
-		return Result{}, ErrInvalidDocument
-	}
-	for _, part := range strings.Split(source, "/") {
-		if part == ".." {
-			return Result{}, ErrInvalidDocument
-		}
-	}
-	source = path.Clean(source)
-	if !Supported(source) {
-		return Result{}, ErrUnsupportedFormat
-	}
-	// Serialise each source within this process so updates cannot delete each other's chunks.
-	value, _ := s.locks.LoadOrStore(digest(source), make(chan struct{}, 1))
-	lock := value.(chan struct{})
-	select {
-	case lock <- struct{}{}:
-		defer func() { <-lock }()
-	case <-ctx.Done():
-		return Result{}, errors.Join(ErrRetryable, ctx.Err())
-	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, errors.Join(ErrRetryable, err)
-	}
-	data, err := io.ReadAll(io.LimitReader(input, s.cfg.MaxUploadBytes+1))
+	var err error
+	source, err = NormalizeSource(source)
 	if err != nil {
-		return Result{}, errors.Join(ErrRetryable, err)
+		return Result{}, err
 	}
-	if int64(len(data)) > s.cfg.MaxUploadBytes {
-		return Result{}, ErrTooLarge
+	unlock, err := LockSource(ctx, source)
+	if err != nil {
+		return Result{}, err
 	}
-	if !utf8.Valid(data) || strings.ContainsRune(string(data), 0) {
-		return Result{}, ErrInvalidDocument
+	defer unlock()
+	data, err := ReadDocument(ctx, input, s.cfg.MaxUploadBytes)
+	if err != nil {
+		return Result{}, err
 	}
 	hash := digest(string(data))
 	docs, err := Split(source, string(data), hash, s.cfg)
@@ -113,32 +89,8 @@ func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.R
 		return Result{}, errors.Join(ErrRetryable, err)
 	}
 	result := Result{filepath.Base(savedPath), savedPath, size, source, hash, len(docs)}
-	for start := 0; start < len(docs); start += s.cfg.BatchSize {
-		if err := ctx.Err(); err != nil {
-			return result, errors.Join(ErrRetryable, err)
-		}
-		batch := docs[start:min(start+s.cfg.BatchSize, len(docs))]
-		ids, err := s.store.Store(ctx, batch)
-		if err != nil {
-			return result, errors.Join(ErrRetryable, err)
-		}
-		if len(ids) != len(batch) {
-			return result, errors.Join(ErrRetryable, errors.New("store returned an incomplete batch"))
-		}
-		for i, id := range ids {
-			if id != batch[i].ID {
-				return result, errors.Join(ErrRetryable, errors.New("store returned unexpected document IDs"))
-			}
-		}
-	}
-	// Keep every old version until all new chunks have been acknowledged.
-	if err := ctx.Err(); err != nil {
-		return result, errors.Join(ErrRetryable, err)
-	}
-	if err := s.store.DeleteOld(ctx, docs[0].MetaData["document_id"].(string), docs[0].MetaData["version"].(string)); err != nil {
-		return result, errors.Join(ErrRetryable, err)
-	}
-	return result, nil
+	_, err = IndexChunks(ctx, s.store, docs, s.cfg.BatchSize)
+	return result, err
 }
 
 func (s *KnowledgeService) IngestFile(ctx context.Context, source, filename string) (result Result, err error) {
