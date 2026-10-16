@@ -1,20 +1,20 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架与基于 Eino 的普通聊天，后续按需加入会话记忆、知识库和工具调用。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，以及豆包 Embedding 和 Milvus 向量存取，后续按需加入会话记忆、知识库问答和工具调用。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
 ├── main.go                  # 启动时创建一次模型客户端并注入 ChatService
-├── cmd/modelcheck/          # 独立模型 ID 与接口检查命令
+├── cmd/                     # 模型检查、向量诊断、集合初始化和验收命令
 ├── api/{health,chat}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── config/             # 配置读取、环境变量覆盖和校验
 │   ├── controller/         # 接收 HTTP 请求，调用 service
-│   └── service/            # 健康检查与 ChatService
+│   └── service/            # 健康检查、ChatService 和知识库向量服务
 ├── utility/
-│   ├── client/             # 模型客户端接口、Eino OpenAI 适配器
+│   ├── client/             # 聊天、Ark Embedding 和 Milvus 客户端
 │   └── middleware/         # message/data 统一响应及状态码
 ├── manifest/config/        # GoFrame 配置
 └── test/                   # 所有测试文件和本地协议测试
@@ -123,4 +123,57 @@ GOTOOLCHAIN=local go build -o bin/modelcheck ./cmd/modelcheck
 
 仅在核心逻辑中使用必要的英文注释，解释配置优先级、context 与超时传递、错误处理等设计原因；普通方法与直观判断不逐一注释。后续新增或修改核心逻辑时同步维护。
 
-实现说明见 `docs/stage-01.md` 和 `docs/stage-02.md`。
+实现说明见 `docs/stage-01.md`、`docs/stage-02.md` 和 `docs/stage-03.md`。
+
+## Milvus 与 Embedding
+
+当前支持云端 Milvus 2.4.x，以及豆包 `doubao-embedding-vision-251215` 的文本向量化。使用 Eino Ark Embedding **v0.1.2**、Milvus Go SDK **v2.4.2**；Go 1.23.12、GoFrame 和 Eino 版本保持不变。
+
+配置示例见 `backend/.env.example` 和 `backend/manifest/config/config.example.yaml`。将实际地址和密钥填入已忽略的 `backend/.env`，不要直接覆盖已有的聊天配置。下面的命令只读取所需的配置，不需要聊天模型凭据。
+
+| YAML 字段 | 环境变量 | 默认值 |
+| --- | --- | --- |
+| `embedding.base_url` | `ONCALL_EMBEDDING_BASE_URL` | `https://ark.cn-beijing.volces.com/api/v3` |
+| `embedding.model` | `ONCALL_EMBEDDING_MODEL` | `doubao-embedding-vision-251215` |
+| 不接受 YAML 密钥 | `ONCALL_EMBEDDING_API_KEY` 或 `ARK_API_KEY` | 必填 |
+| `embedding.timeout` | `ONCALL_EMBEDDING_TIMEOUT` | `30s` |
+| `embedding.dimensions` | `ONCALL_EMBEDDING_DIMENSIONS` | `0`，探测实际维度 |
+| `milvus.address` | `ONCALL_MILVUS_ADDRESS` | `localhost:19530` |
+| `milvus.database` | `ONCALL_MILVUS_DATABASE` | `default` |
+| `milvus.collection` | `ONCALL_MILVUS_COLLECTION` | `oncall_knowledge` |
+| `milvus.tls` | `ONCALL_MILVUS_TLS` | `false` |
+| `milvus.ca_file` | `ONCALL_MILVUS_CA_FILE` | 空，使用系统 CA |
+| `milvus.server_name` | `ONCALL_MILVUS_SERVER_NAME` | 空，使用连接地址校验证书 |
+| `milvus.connect_timeout` | `ONCALL_MILVUS_CONNECT_TIMEOUT` | `5s` |
+| `milvus.timeout` | `ONCALL_MILVUS_TIMEOUT` | `60s` |
+| 不接受 YAML 认证 | `ONCALL_MILVUS_USERNAME` / `ONCALL_MILVUS_PASSWORD` | 不认证 |
+| 不接受 YAML 认证 | `ONCALL_MILVUS_TOKEN` | 不认证，与用户名/密码互斥 |
+
+环境变量显式覆盖 YAML，包括空值。`ONCALL_EMBEDDING_API_KEY` 若存在就优先于 `ARK_API_KEY`，显式空值会校验失败。`embedding.dimensions` 为正数时只断言实际输出长度，不向服务商请求降维。Base URL 填 API 根路径，不能包含完整的 `/embeddings/multimodal` 端点。Milvus 地址填 `host:port`，TLS 通过独立开关启用；支持系统 CA 或指定 CA，始终验证证书。当前不包含双向 TLS 客户端证书配置。
+
+```bash
+cd OnCallAgent/backend
+
+# 调用真实模型，输出实际维度。
+GOTOOLCHAIN=local go run ./cmd/embedding_check
+
+# 只读诊断；集合尚不存在、结构不兼容或未加载时以非零状态退出。
+GOTOOLCHAIN=local go run ./cmd/milvus_check
+
+# 显式创建集合、向量索引并加载；数据库必须事先存在。
+GOTOOLCHAIN=local go run ./cmd/init_knowledge
+GOTOOLCHAIN=local go run ./cmd/milvus_check
+
+# 写入一条带唯一 ID 的验收记录，再用相同文本进行真实向量检索。
+GOTOOLCHAIN=local go run ./cmd/knowledge_check
+```
+
+专用集合字段为 `id`（VARCHAR 主键，256 字节，手动 ID）、`content`（VARCHAR，65535 字节）、`metadata`（JSON）和 `vector`（FLOAT_VECTOR，实际探测维度）。使用 HNSW/COSINE 索引（M=16、efConstruction=128），检索显式使用 COSINE 和 HNSW search param（ef 至少为 64 和 topK 中的较大值）。写入使用 Upsert，相同 ID 更新已有文档；检索使用 Strong 一致性。
+
+`milvus_check` 输出服务版本、SDK 版本、schema、索引参数/状态、集合加载状态及差异，不创建、不加载、不写入。`init_knowledge` 先探测模型维度；已有集合的 schema 或向量索引不兼容时输出差异并停止，不删除或重建集合。兼容集合允许补建缺失索引和加载，重复运行不会重建已有集合和索引。更换 Embedding 模型时应使用新集合，即使新旧模型维度相同，也不能混用向量空间。
+
+`knowledge_check` 成功返回 `matched=true`、维度和 COSINE 得分；同时验证 ID、内容、来源 metadata，并要求得分至少 0.99。每次执行会保留一条 `source=knowledge_check` 的验收记录；不清空集合。
+
+连接工厂在 `utility/client`，集合检查、初始化和 Eino Indexer/Retriever 适配层在 `internal/service/knowledge`。命令在 `internal/command/knowledge` 统一管理客户端创建和关闭。当前 Web 服务继续提供普通聊天，知识库尚未参与 `/api/chat`。
+
+新增测试位于 `backend/test/{config,embedding,milvus,knowledge}`。构建所有命令可执行 `GOTOOLCHAIN=local go build ./...`；测试与竞态检测沿用前述命令。真实验收结果和版本依据见 `docs/stage-03.md`。
