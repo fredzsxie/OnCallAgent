@@ -13,10 +13,15 @@ import (
 	"testing"
 	"time"
 
+	einoretriever "github.com/cloudwego/eino/components/retriever"
+	"github.com/cloudwego/eino/schema"
+	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	controller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/mem"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/util/guid"
@@ -48,6 +53,9 @@ func completion(w http.ResponseWriter, answer string) {
 }
 
 func startAPI(t *testing.T, service *chatservice.ChatService) string {
+	return startAPIWithWriter(t, service, nil)
+}
+func startAPIWithWriter(t *testing.T, service *chatservice.ChatService, wrap func(http.ResponseWriter) http.ResponseWriter) string {
 	t.Helper()
 	server := ghttp.GetServer("chat-test-" + guid.S())
 	server.SetDumpRouterMap(false)
@@ -55,7 +63,11 @@ func startAPI(t *testing.T, service *chatservice.ChatService) string {
 	server.SetErrorLogEnabled(false)
 	server.Group("/api", func(group *ghttp.RouterGroup) {
 		group.Middleware(middleware.ResponseMiddleware)
-		group.Bind(controller.NewV1(service))
+		streams, err := sse.New(service)
+		if err != nil {
+			t.Fatal(err)
+		}
+		group.Bind(controller.NewV1(service, streams))
 	})
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -64,6 +76,9 @@ func startAPI(t *testing.T, service *chatservice.ChatService) string {
 	if err := server.SetListener(listener); err != nil {
 		_ = listener.Close()
 		t.Fatal(err)
+	}
+	if wrap != nil {
+		server.SetHandler(func(w http.ResponseWriter, r *http.Request) { server.ServeHTTP(wrap(w), r) })
 	}
 	if err := server.Start(); err != nil {
 		_ = listener.Close()
@@ -92,7 +107,7 @@ func TestChatContractAndReusableEinoModel(t *testing.T) {
 			http.Error(w, "invalid JSON", 400)
 			return
 		}
-		if body.Model != "test-model" || len(body.Messages) != 1 || body.Messages[0].Role != "user" || body.Messages[0].Content != "你好" {
+		if body.Model != "test-model" || (len(body.Messages) != 2 && len(body.Messages) != 4) || body.Messages[0].Role != "system" || body.Messages[len(body.Messages)-1].Role != "user" || body.Messages[len(body.Messages)-1].Content != "你好" {
 			t.Errorf("unexpected model or messages: %+v", body)
 		}
 		completion(w, "你好，我是助手。")
@@ -100,7 +115,7 @@ func TestChatContractAndReusableEinoModel(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("constructing a model should not send a completion request")
 	}
-	api := startAPI(t, chatservice.NewChatService(model))
+	api := startAPI(t, newChatService(t, model))
 	httpClient := &http.Client{Timeout: 3 * time.Second}
 	for i := 0; i < 2; i++ {
 		response, err := httpClient.Post(api+"/api/chat", "application/json", strings.NewReader(`{"Id":"session-1","Question":"你好"}`))
@@ -127,7 +142,7 @@ func TestChatContractAndReusableEinoModel(t *testing.T) {
 func TestChatRejectsInvalidInputBeforeCallingModel(t *testing.T) {
 	var calls atomic.Int32
 	model := newModel(t, func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); completion(w, "unused") }, time.Second)
-	api := startAPI(t, chatservice.NewChatService(model))
+	api := startAPI(t, newChatService(t, model))
 	for _, payload := range []string{`{}`, `{"Id":"s"}`, `{"Question":"hello"}`, `{"Id":"s","Question":"   "}`, `{"Id":" ","Question":"hello"}`, `{invalid`} {
 		response, err := http.Post(api+"/api/chat", "application/json", strings.NewReader(payload))
 		if err != nil {
@@ -159,7 +174,7 @@ func TestChatUpstreamFailures(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			model := newModel(t, tt.handler, 75*time.Millisecond)
-			api := startAPI(t, chatservice.NewChatService(model))
+			api := startAPI(t, newChatService(t, model))
 			response, err := http.Post(api+"/api/chat", "application/json", strings.NewReader(`{"Id":"s","Question":"hello"}`))
 			if err != nil {
 				t.Fatal(err)
@@ -181,7 +196,7 @@ func TestRequestCancellationReachesModel(t *testing.T) {
 		<-r.Context().Done()
 		close(cancelled)
 	}, 3*time.Second)
-	api := startAPI(t, chatservice.NewChatService(model))
+	api := startAPI(t, newChatService(t, model))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api+"/api/chat", strings.NewReader(`{"Id":"s","Question":"hello"}`))
@@ -216,4 +231,27 @@ func TestRequestCancellationReachesModel(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("cancellation did not reach the upstream model")
 	}
+}
+
+type emptyRetriever struct{}
+
+func (emptyRetriever) Retrieve(context.Context, string, ...einoretriever.Option) ([]*schema.Document, error) {
+	return []*schema.Document{}, nil
+}
+func newChatService(t *testing.T, model *client.OpenAI) *chatservice.ChatService {
+	t.Helper()
+	cfg := config.ChatAgent{MaxSteps: 12, Timeout: 3 * time.Second}
+	graph, err := pipeline.BuildChatAgent(context.Background(), pipeline.Config{Agent: cfg, TimeZone: "Asia/Shanghai"}, pipeline.Dependencies{Model: model.ToolCallingModel(), Retriever: emptyRetriever{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory, err := mem.NewStore(config.ChatMemory{MaxRounds: 3, TTL: 30 * time.Minute}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := chatservice.NewChatService(graph, memory, cfg.Timeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }

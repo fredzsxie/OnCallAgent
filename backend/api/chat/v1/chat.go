@@ -11,3 +11,10 @@ type ChatReq struct {
 type ChatRes struct {
 	Answer string `json:"answer"`
 }
+
+type ChatStreamReq struct {
+	g.Meta   `path:"/chat_stream" method:"post" summary:"流式聊天"`
+	Id       string `json:"Id" v:"required#Id is required"`
+	Question string `json:"Question" v:"required#Question is required"`
+}
+type ChatStreamRes struct{}
