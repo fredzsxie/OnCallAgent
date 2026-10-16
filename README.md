@@ -1,13 +1,13 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传和分批入库，后续按需加入会话记忆、知识库问答和工具调用。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、分批入库和 KnowledgeIndexing 图编排，后续按需加入会话记忆、知识库问答和工具调用。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
 ├── main.go                  # 启动时创建并注入共享客户端和服务
-├── cmd/                     # modelcheck 和 init_knowledge 独立命令
+├── cmd/                     # modelcheck、init_knowledge 和 knowledge_cmd 独立命令
 ├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── config/             # 配置读取、环境变量覆盖和校验
@@ -205,3 +205,17 @@ curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.
 ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
   ./test/upload -run '^TestUploadIntegration$'
 ```
+
+## KnowledgeIndexing 图编排
+
+图契约为 `document.Source → []string`，拓扑固定为 `START → FileLoader → MarkdownSplitter → MilvusIndexer → END`。Embedding 由 Store 内部调用，客户端由命令入口复用和关闭。
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run ./cmd/knowledge_cmd \
+  --root ./test/knowledge/pipeline/testdata --file runbook.md
+GOTOOLCHAIN=local go run ./cmd/knowledge_cmd \
+  --dev --root ./test/knowledge/pipeline/testdata --dev-port 52538
+```
+
+普通模式输出 JSON ID 数组后退出；调试模式可不指定文件，图注册后等待 SIGINT/SIGTERM。调试输入为 `{"URI":"runbook.md"}`。图配置见 [Graph Schema](backend/internal/service/knowledge/pipeline/workflow.json)，节点配置、幂等规则和验收结果见 [第 4.1 步](docs/stage-04-1.md)。
