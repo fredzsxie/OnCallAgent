@@ -1,16 +1,19 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、分批入库和 KnowledgeIndexing 图编排，后续按需加入会话记忆、知识库问答和工具调用。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索和时间/内部文档工具，后续按需加入会话记忆及 Agent 问答。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
 ├── main.go                  # 启动时创建并注入共享客户端和服务
-├── cmd/                     # modelcheck、init_knowledge 和 knowledge_cmd 独立命令
+├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd 独立命令
 ├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
-│   ├── ai/agent/           # 各 Agent 的 xxx_pipeline 编排与组件适配
+│   ├── ai/
+│   │   ├── agent/          # 各 Agent 的 xxx_pipeline 编排与组件适配
+│   │   ├── retriever/      # 复用 Store 的检索组件
+│   │   └── tools/          # 时间、内部文档工具和注册模块
 │   ├── config/             # 配置读取、环境变量覆盖和校验
 │   ├── controller/         # 接收 HTTP 请求，调用 service
 │   └── service/            # 健康检查、ChatService 和知识库向量服务
@@ -224,3 +227,28 @@ GOTOOLCHAIN=local go run ./cmd/knowledge_cmd \
 ```
 
 普通模式输出 JSON ID 数组后退出；调试模式可不指定文件，图注册后等待 SIGINT/SIGTERM。调试输入为 `{"URI":"runbook.md"}`。图配置见 [Graph Schema](backend/internal/ai/agent/knowledge_index_pipeline/workflow.json)，节点配置、幂等规则和验收结果见 [第 4.1 步](docs/stage-04-1.md)。
+
+## 知识检索与基础工具
+
+`internal/ai/retriever` 注入现有 Store，复用同一 Embedding、集合维度、FLOAT_VECTOR 转换和 HNSW/COSINE 搜索。默认 TopK 为 3，最低相似度为 0.5；无命中返回 `documents:[]`，查询失败返回错误。结果包含正文、来源、标题和相似度。
+
+| 环境变量 | 默认值 |
+| --- | --- |
+| `ONCALL_RETRIEVAL_TOP_K` | 3，范围 1–16384 |
+| `ONCALL_RETRIEVAL_SCORE_THRESHOLD` | 0.5，有限数，范围 [-1,1] |
+| `ONCALL_TOOLS_QUERY_INTERNAL_DOCS_ENABLED` | true |
+| `ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED` | true |
+| `ONCALL_TIME_ZONE` | Asia/Shanghai |
+
+`query_internal_docs` 输入 `{"query":"问题"}`，返回 `{"query":"问题","documents":[...]}`；`get_current_time` 输入 `{}`，返回含 UTC 偏移的 `timestamp`、IANA `timezone` 和 `unix_seconds`。工具按配置注册并复用依赖，普通聊天继续保持当前行为。
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run ./cmd/recall_cmd --query '服务认证失败后如何恢复？'
+GOTOOLCHAIN=local go run ./cmd/recall_cmd --query '服务认证失败后如何恢复？' --top-k 3 --score-threshold 0.5
+GOTOOLCHAIN=local go run ./cmd/recall_cmd --list-tools
+GOTOOLCHAIN=local go run ./cmd/recall_cmd --tool get_current_time --input '{}'
+GOTOOLCHAIN=local go run ./cmd/recall_cmd --tool query_internal_docs --input '{"query":"服务认证失败后如何恢复？"}'
+```
+
+列工具定义和调用时间工具不要求云端凭据。检索 CLI 不隐式初始化集合，配置错误或依赖失败会非零退出；无结果正常退出。完整工具输入输出、验收集合与实际得分见 [第 5 步](docs/stage-05.md)。
