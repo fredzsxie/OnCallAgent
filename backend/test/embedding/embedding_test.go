@@ -102,3 +102,23 @@ func TestEmbeddingContextAndTimeout(t *testing.T) {
 		t.Fatalf("expected canceled, got %v", err)
 	}
 }
+
+func TestEmbeddingRejectsInconsistentDimensions(t *testing.T) {
+	e := embedder(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Input []struct{ Text string } `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		vector := []float64{1, 2}
+		if body.Input[0].Text == "second" {
+			vector = []float64{1, 2, 3}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"embedding": vector}})
+	}, time.Second)
+	if _, err := e.EmbedStrings(context.Background(), []string{"first", "second"}); err == nil {
+		t.Fatal("inconsistent dimensions must be rejected")
+	}
+}

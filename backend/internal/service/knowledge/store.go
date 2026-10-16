@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/components/embedding"
@@ -28,16 +29,29 @@ type Store struct {
 var _ indexer.Indexer = (*Store)(nil)
 var _ retriever.Retriever = (*Store)(nil)
 
-func NewStore(ctx context.Context, db client.Client, emb embedding.Embedder, cfg config.Milvus, dimension int) (*Store, error) {
-	if db == nil || emb == nil || dimension < 1 {
-		return nil, errors.New("Milvus, embedding and a positive dimension are required")
+func NewStore(ctx context.Context, db client.Client, emb embedding.Embedder, cfg config.Milvus) (*Store, error) {
+	if db == nil || emb == nil {
+		return nil, errors.New("Milvus and embedding are required")
 	}
-	r, err := Check(ctx, db, cfg, dimension)
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+	collection, err := db.DescribeCollection(ctx, cfg.Collection)
+	if err != nil {
+		return nil, operationError(ctx, "describe collection; run init_knowledge first")
+	}
+	dimension := VectorDimension(collection.Schema)
+	if dimension < 1 {
+		return nil, errors.New("collection must contain a FLOAT_VECTOR field with a positive dimension")
+	}
+	if diff := SchemaDiff(collection.Schema, dimension); len(diff) != 0 {
+		return nil, fmt.Errorf("existing collection differs: %s", strings.Join(diff, "; "))
+	}
+	hasIndex, err := vectorIndex(ctx, db, cfg.Collection)
 	if err != nil {
 		return nil, err
 	}
-	if !r.Ready {
-		return nil, errors.New("knowledge collection is incompatible or not loaded; run milvus_check / init_knowledge")
+	if !hasIndex {
+		return nil, errors.New("vector index is missing; run init_knowledge first")
 	}
 	return &Store{db, emb, cfg, dimension}, nil
 }
@@ -59,7 +73,6 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 		return []string{}, nil
 	}
 	ids, texts, metadata := make([]string, len(docs)), make([]string, len(docs)), make([][]byte, len(docs))
-	seen := map[string]bool{}
 	for i, doc := range docs {
 		if doc == nil || strings.TrimSpace(doc.Content) == "" || len(doc.Content) > ContentMaxLength {
 			return nil, errors.New("document content must be nonempty and at most 65535 UTF-8 bytes")
@@ -71,10 +84,9 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 				return nil, err
 			}
 		}
-		if len(ids[i]) > IDMaxLength || seen[ids[i]] {
-			return nil, errors.New("document IDs must be unique in a batch and at most 256 bytes")
+		if len(ids[i]) > IDMaxLength {
+			return nil, errors.New("document IDs must be at most 256 bytes")
 		}
-		seen[ids[i]] = true
 		m := doc.MetaData
 		if m == nil {
 			m = map[string]any{}
@@ -82,9 +94,6 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 		var err error
 		if metadata[i], err = json.Marshal(m); err != nil {
 			return nil, errors.New("document metadata must be JSON serializable")
-		}
-		if len(metadata[i]) > 65536 {
-			return nil, errors.New("document metadata exceeds 65536 bytes")
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
@@ -107,7 +116,7 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 		entity.NewColumnVarChar("id", ids), entity.NewColumnVarChar("content", texts),
 		entity.NewColumnJSONBytes("metadata", metadata), entity.NewColumnFloatVector("vector", s.dimension, values))
 	if err != nil {
-		return nil, operationError(ctx, "upsert documents", err)
+		return nil, operationError(ctx, "upsert documents")
 	}
 	return ids, nil
 }
@@ -148,7 +157,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	// Strong consistency makes a completed write visible to the following verification search.
 	results, err := s.db.Search(ctx, s.cfg.Collection, nil, "", []string{"content", "metadata"}, []entity.Vector{entity.FloatVector(vector)}, "vector", entity.COSINE, topK, searchParam, client.WithSearchQueryConsistencyLevel(entity.ClStrong))
 	if err != nil {
-		return nil, operationError(ctx, "search vectors", err)
+		return nil, operationError(ctx, "search vectors")
 	}
 	if len(results) != 1 || results[0].Err != nil {
 		return nil, errors.New("invalid Milvus search result")

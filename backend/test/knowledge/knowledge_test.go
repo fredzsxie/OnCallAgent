@@ -30,7 +30,6 @@ type fakeDB struct {
 	indexErr         error
 }
 
-func (f *fakeDB) GetVersion(context.Context) (string, error)          { return "v2.4.1", nil }
 func (f *fakeDB) HasCollection(context.Context, string) (bool, error) { return f.exists, nil }
 func (f *fakeDB) DescribeCollection(context.Context, string) (*entity.Collection, error) {
 	return &entity.Collection{Schema: f.schema}, nil
@@ -43,15 +42,6 @@ func (f *fakeDB) DescribeIndex(_ context.Context, _ string, field string, _ ...c
 		return []entity.Index{f.index}, nil
 	}
 	return nil, errors.New("index not found")
-}
-func (f *fakeDB) GetIndexState(context.Context, string, string, ...client.IndexOption) (entity.IndexState, error) {
-	return entity.IndexState(3), nil
-}
-func (f *fakeDB) GetLoadState(context.Context, string, []string) (entity.LoadState, error) {
-	if f.loaded {
-		return entity.LoadStateLoaded, nil
-	}
-	return entity.LoadStateNotLoad, nil
 }
 func (f *fakeDB) CreateCollection(_ context.Context, s *entity.Schema, _ int32, _ ...client.CreateCollectionOption) error {
 	f.exists = true
@@ -103,12 +93,12 @@ func cfg() config.Milvus {
 
 func TestInitAndIdempotency(t *testing.T) {
 	f := &fakeDB{}
-	r, err := knowledge.Init(context.Background(), f, cfg(), 3)
-	if err != nil || !r.Ready || f.creates != 2 || r.Dimension != 3 || f.index.Params()["metric_type"] != "COSINE" {
+	r, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg())
+	if err != nil || r != 3 || !f.loaded || f.creates != 2 || f.index.Params()["metric_type"] != "COSINE" {
 		t.Fatalf("initialization failed: %+v, %v", r, err)
 	}
-	r, err = knowledge.Init(context.Background(), f, cfg(), 3)
-	if err != nil || !r.Ready || f.creates != 2 {
+	r, err = knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg())
+	if err != nil || r != 3 || f.creates != 2 {
 		t.Fatal("initialization must not recreate collection or index")
 	}
 }
@@ -128,8 +118,8 @@ func TestInitPreservesMismatchedCollection(t *testing.T) {
 			f := &fakeDB{exists: true, schema: knowledge.Schema(cfg().Collection, 3)}
 			f.index, _ = entity.NewIndexHNSW(entity.COSINE, 16, 128)
 			tt.change(f)
-			r, err := knowledge.Init(context.Background(), f, cfg(), 3)
-			if err == nil || len(r.Differences) == 0 || f.creates != 0 || f.loaded {
+			r, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg())
+			if err == nil || r != 0 || f.creates != 0 || f.loaded {
 				t.Fatalf("mismatched collection was modified: %+v, %v", r, err)
 			}
 		})
@@ -138,17 +128,17 @@ func TestInitPreservesMismatchedCollection(t *testing.T) {
 
 func TestIndexPermissionErrorIsNotMissing(t *testing.T) {
 	f := &fakeDB{exists: true, schema: knowledge.Schema(cfg().Collection, 3), indexErr: errors.New("permission denied")}
-	if _, err := knowledge.Init(context.Background(), f, cfg(), 3); err == nil || f.creates != 0 {
+	if _, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err == nil || f.creates != 0 {
 		t.Fatal("permission failure must not trigger DDL")
 	}
 }
 
 func TestStoreAndCosineRetrieval(t *testing.T) {
 	f := &fakeDB{}
-	if _, err := knowledge.Init(context.Background(), f, cfg(), 3); err != nil {
+	if _, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg(), 3)
+	s, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,15 +176,34 @@ func TestStoreAndCosineRetrieval(t *testing.T) {
 
 func TestDimensionMismatchCannotWrite(t *testing.T) {
 	f := &fakeDB{}
-	if _, err := knowledge.Init(context.Background(), f, cfg(), 3); err != nil {
+	if _, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2}}, cfg(), 3)
+	s, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2}}, cfg())
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = s.Store(context.Background(), []*schema.Document{{ID: "one", Content: "hello"}})
 	if err == nil || f.upserts != 0 {
 		t.Fatal("dimension mismatch must be rejected before write")
+	}
+}
+
+func TestInvalidEmbeddingCannotInitialize(t *testing.T) {
+	f := &fakeDB{}
+	if _, err := knowledge.Init(context.Background(), f, embed{[]float64{0, 0, 0}}, cfg()); err == nil || f.creates != 0 {
+		t.Fatal("invalid embedding must fail before collection mutation")
+	}
+}
+
+func TestStoreRequiresExplicitInitialization(t *testing.T) {
+	f := &fakeDB{}
+	if _, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err == nil || f.creates != 0 {
+		t.Fatal("store construction must not create a collection")
+	}
+	f.exists = true
+	f.schema = knowledge.Schema(cfg().Collection, 3)
+	if _, err := knowledge.NewStore(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg()); err == nil || f.creates != 0 {
+		t.Fatal("store construction must not create an index")
 	}
 }

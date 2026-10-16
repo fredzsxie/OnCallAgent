@@ -8,8 +8,6 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 )
 
-const MilvusSDKVersion = "v2.4.2"
-
 func NewMilvus(ctx context.Context, cfg config.Milvus) (client.Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
 	defer cancel()

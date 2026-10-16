@@ -61,7 +61,7 @@ Web 入口和独立模型检查命令先调用 `config.LoadEnv`，把 `.env` 中
 
 ## 独立模型检查
 
-运行 `GOTOOLCHAIN=local go run ./cmd/modelcheck`，只读取模型配置，不启动 GoFrame HTTP 服务，也不要求 server.port 可用。
+运行 `GOTOOLCHAIN=local go run ./cmd/modelcheck`，只读取模型配置，不启动 GoFrame HTTP 服务，也不要求 ONCALL_SERVER_PORT 有效。
 
 检查流程是：`LoadChatModel → NewOpenAI → GET /models → 配置 ID 精确匹配 → Eino Generate → 输出 JSON`。检查的编排逻辑位于 `internal/service/modelcheck`，模型目录的 HTTP 请求集中在 `utility/client/models.go`，命令入口只负责配置、客户端生命周期和输出。
 

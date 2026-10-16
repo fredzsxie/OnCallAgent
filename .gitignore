@@ -6,5 +6,4 @@ backend/bin/
 backend/data/
 backend/log/
 backend/coverage.out
-backend/manifest/config/*.local.yaml
 *.test

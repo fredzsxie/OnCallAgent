@@ -11,7 +11,6 @@ import (
 	"github.com/cloudwego/eino-ext/components/embedding/ark"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	arkmodel "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 )
 
 type Embedding struct {
@@ -43,12 +42,12 @@ func NewEmbedding(ctx context.Context, cfg config.Embedding) (*Embedding, error)
 func (c *Embedding) Close() { c.http.CloseIdleConnections() }
 
 func (c *Embedding) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
-	if len(texts) == 0 || len(texts) > 256 {
-		return nil, errors.New("embedding input must contain between 1 and 256 texts")
+	if len(texts) == 0 {
+		return nil, errors.New("embedding input must not be empty")
 	}
 	for _, text := range texts {
-		if strings.TrimSpace(text) == "" || len(text) > 100000 {
-			return nil, errors.New("embedding text must be nonempty and at most 100000 UTF-8 bytes")
+		if strings.TrimSpace(text) == "" {
+			return nil, errors.New("embedding text must not be empty")
 		}
 	}
 	options := embedding.GetCommonOptions(nil, opts...)
@@ -62,11 +61,7 @@ func (c *Embedding) EmbedStrings(ctx context.Context, texts []string, opts ...em
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		// Provider errors may echo credentials or input; expose only a status code.
-		var apiErr *arkmodel.APIError
-		if errors.As(err, &apiErr) {
-			return nil, fmt.Errorf("embedding request failed (HTTP %d)", apiErr.HTTPStatusCode)
-		}
+		// Do not expose provider errors, which may contain input or credentials.
 		return nil, errors.New("embedding request failed")
 	}
 	if len(vectors) != len(texts) {

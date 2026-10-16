@@ -7,7 +7,7 @@ OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服
 ```text
 backend/
 ├── main.go                  # 启动时创建一次模型客户端并注入 ChatService
-├── cmd/                     # 模型检查、向量诊断、集合初始化和验收命令
+├── cmd/                     # modelcheck 和 init_knowledge 独立命令
 ├── api/{health,chat}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── config/             # 配置读取、环境变量覆盖和校验
@@ -126,49 +126,50 @@ GOTOOLCHAIN=local go build -o bin/modelcheck ./cmd/modelcheck
 
 ## Milvus 与 Embedding
 
-当前支持云端 Milvus 2.4.x，以及豆包 `doubao-embedding-vision-251215` 的文本向量化。使用 Eino Ark Embedding **v0.1.2**、Milvus Go SDK **v2.4.2**；Go 1.23.12、GoFrame 和 Eino 版本保持不变。
+通过 Eino Ark Embedding **v0.1.2** 接入 `doubao-embedding-vision-251215`，文本使用 `/embeddings/multimodal` 接口。Milvus SDK 固定 **v2.4.2**，已验证云端 Milvus **v2.4.1**；所有依赖版本保持不变。
 
-配置示例见 `backend/.env.example`。将实际地址和密钥填入已忽略的 `backend/.env`，不要直接覆盖已有的聊天配置。下面的命令只读取所需的配置，不需要聊天模型凭据。
+配置统一写在 `backend/.env`，示例见 `backend/.env.example`。已有进程环境变量优先，显式空值不回退到默认值。独立初始化不要求聊天模型凭据。
 
 | 环境变量 | 默认值 |
 | --- | --- |
 | `ONCALL_EMBEDDING_BASE_URL` | `https://ark.cn-beijing.volces.com/api/v3` |
 | `ONCALL_EMBEDDING_MODEL` | `doubao-embedding-vision-251215` |
-| `ONCALL_EMBEDDING_API_KEY` 或 `ARK_API_KEY` | 必填 |
+| `ONCALL_EMBEDDING_API_KEY` 或 `ARK_API_KEY` | 必填，显式 ONCALL 变量优先 |
 | `ONCALL_EMBEDDING_TIMEOUT` | `30s` |
 | `ONCALL_MILVUS_ADDRESS` | `localhost:19530` |
 | `ONCALL_MILVUS_DATABASE` | `default` |
 | `ONCALL_MILVUS_COLLECTION` | `oncall_knowledge` |
-| `ONCALL_MILVUS_TLS` | `false` |
+| `ONCALL_MILVUS_USERNAME` / `ONCALL_MILVUS_PASSWORD` | 同时提供，或同时省略 |
+| `ONCALL_MILVUS_TLS` | `false`，启用后使用系统 CA 校验证书 |
 | `ONCALL_MILVUS_CONNECT_TIMEOUT` | `5s` |
 | `ONCALL_MILVUS_TIMEOUT` | `60s` |
-| `ONCALL_MILVUS_USERNAME` / `ONCALL_MILVUS_PASSWORD` | 不认证 |
 
-所有配置直接从环境变量读取，包括显式空值。`ONCALL_EMBEDDING_API_KEY` 若存在就优先于 `ARK_API_KEY`，显式空值会校验失败。向量维度由模型实际返回值确定。Base URL 填 API 根路径，不能包含完整的 `/embeddings/multimodal` 端点。Milvus 地址填 `host:port`，TLS 通过独立开关启用；使用系统 CA 验证服务端证书，不支持自定义 CA、证书域名或双向 TLS。
+Base URL 填 API 根路径，不包含完整的 Embedding 端点。Milvus 地址填 `host:port`。当前仅支持用户名密码和基本 TLS，不提供 Token、自定义 CA 或证书域名配置。向量维度从模型实际输出读取，不单独配置。
 
 ```bash
 cd OnCallAgent/backend
-
-# 调用真实模型，输出实际维度。
-GOTOOLCHAIN=local go run ./cmd/embedding_check
-
-# 只读诊断；集合尚不存在、结构不兼容或未加载时以非零状态退出。
-GOTOOLCHAIN=local go run ./cmd/milvus_check
-
-# 显式创建集合、向量索引并加载；数据库必须事先存在。
 GOTOOLCHAIN=local go run ./cmd/init_knowledge
-GOTOOLCHAIN=local go run ./cmd/milvus_check
-
-# 写入一条带唯一 ID 的验收记录，再用相同文本进行真实向量检索。
-GOTOOLCHAIN=local go run ./cmd/knowledge_check
 ```
 
-专用集合字段为 `id`（VARCHAR 主键，256 字节，手动 ID）、`content`（VARCHAR，65535 字节）、`metadata`（JSON）和 `vector`（FLOAT_VECTOR，实际探测维度）。使用 HNSW/COSINE 索引（M=16、efConstruction=128），检索显式使用 COSINE 和 HNSW search param（ef 至少为 64 和 topK 中的较大值）。写入使用 Upsert，相同 ID 更新已有文档；检索使用 Strong 一致性。
+初始化会探测实际向量维度，检查已有集合的 schema 与向量索引，创建缺失集合/索引并加载。数据库必须预先存在。已有结构不匹配时返回具体差异，保留数据；匹配时可重复执行。
 
-`milvus_check` 输出服务版本、SDK 版本、schema、索引参数/状态、集合加载状态及差异，不创建、不加载、不写入。`init_knowledge` 先探测模型维度；已有集合的 schema 或向量索引不兼容时输出差异并停止，不删除或重建集合。兼容集合允许补建缺失索引和加载，重复运行不会重建已有集合和索引。更换 Embedding 模型时应使用新集合，即使新旧模型维度相同，也不能混用向量空间。
+集合保留四个字段：`id`（VARCHAR 主键，256 字节）、`content`（VARCHAR，65535 字节）、`metadata`（JSON）和 `vector`（FLOAT_VECTOR，实际维度）。索引为 HNSW/COSINE（M=16、efConstruction=128），检索显式使用 COSINE 与 Strong 一致性，ef=max(64, topK)。
 
-`knowledge_check` 成功返回 `matched=true`、维度和 COSINE 得分；同时验证 ID、内容、来源 metadata，并要求得分至少 0.99。每次执行会保留一条 `source=knowledge_check` 的验收记录；不清空集合。
+`utility/client` 负责创建 Ark 和 Milvus 客户端，调用方复用并关闭。`internal/service/knowledge` 保留 Eino `Store/Retrieve` 接口：Upsert 写入文档，检索支持 TopK 和分数阈值。Store 构造函数读取已有集合，不创建或加载集合。当前 Web 服务仍提供普通聊天，向量服务尚未接入 `/api/chat`。更换 Embedding 模型时应使用新集合，避免混用向量空间。
 
-连接工厂在 `utility/client`，集合检查、初始化和 Eino Indexer/Retriever 适配层在 `internal/service/knowledge`。命令在 `internal/command/knowledge` 统一管理客户端创建和关闭。当前 Web 服务继续提供普通聊天，知识库尚未参与 `/api/chat`。
+三个独立检查/验收命令已移除，真实服务验证通过显式开启的集成测试完成：
 
-新增测试位于 `backend/test/{config,embedding,milvus,knowledge}`。构建所有命令可执行 `GOTOOLCHAIN=local go build ./...`；测试与竞态检测沿用前述命令。真实验收结果和版本依据见 `docs/stage-03.md`。
+```bash
+# 默认测试仅使用本地 HTTP/gRPC 端点，真实集成测试自动跳过。
+GOTOOLCHAIN=local go test -race -timeout 90s ./test/...
+GOTOOLCHAIN=local go vet ./...
+GOTOOLCHAIN=local go build ./...
+
+# 显式调用豆包和 Milvus；初始化集合并保留一条带验收标记的文档。
+ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
+  ./test/knowledge -run '^TestKnowledgeIntegration$'
+```
+
+集成测试读取 `backend/.env`，保留已有进程变量，核对现有集合 ID 未改变，再验证真实向量写入、检索、metadata 和 COSINE 得分。每次执行会新增并保留一条 `source=knowledge_integration` 的记录。没有配置真实凭据时，不启用该测试；不能把本地测试通过表述为云端验证通过。
+
+实现与验收记录见 `docs/stage-03.md`。

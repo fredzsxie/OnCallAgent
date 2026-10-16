@@ -52,9 +52,6 @@ func SchemaDiff(actual *entity.Schema, dimension int) []string {
 			diffs = append(diffs, f.Name+": unexpected partition, dynamic or clustering field")
 		}
 		for key, value := range expected.TypeParams {
-			if key == "dim" && dimension == 0 {
-				continue
-			}
 			if f.TypeParams[key] != value {
 				diffs = append(diffs, fmt.Sprintf("%s.%s: expected %s, got %s", f.Name, key, value, f.TypeParams[key]))
 			}
