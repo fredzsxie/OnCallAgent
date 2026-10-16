@@ -22,6 +22,8 @@ http.createServer((req, res) => {
     let answer = 'first\nsecond "quoted" \\path';
     if (question.startsWith('remember:')) answer = question.slice('remember:'.length);
     if (question === 'recall') answer = users.findLast(m => m.content.startsWith('remember:'))?.content.slice('remember:'.length) || 'unknown';
+    if (question === '__docs__') answer = body.messages.find(m => m.role === 'system')?.content.split('<documents>')[1]?.split('</documents>')[0]?.trim() || '知识库为空';
+    if (question === '__markdown__') answer = '# 验收标题\n\n**加粗** 与 [安全链接](https://example.com)\n\n| 项目 | 状态 |\n| --- | --- |\n| 服务 | 正常 |\n\n```sh\necho "hello"\n```\n\n<script>window.__xss = true</script><img src="https://example.com/track" onerror="window.__xss = true"><svg onload="window.__xss = true"></svg><iframe srcdoc="unsafe"></iframe><style>body{display:none}</style><a href="javascript:alert(1)">危险链接</a><form><input autofocus onfocus="window.__xss = true"></form>';
     if (!body.stream) {
       res.writeHead(200, {'Content-Type': 'application/json'});
       return res.end(JSON.stringify({id:'fixture', object:'chat.completion', model:body.model, choices:[{index:0, message:{role:'assistant',content:answer},finish_reason:'stop'}]}));
@@ -32,5 +34,9 @@ http.createServer((req, res) => {
     if (question === '__broken_stream__') return res.destroy();
     res.end('data: [DONE]\n\n');
   };
-  if (question === '__timeout__') setTimeout(reply,1500); else reply();
+  if (question === '__timeout__') setTimeout(reply,1500);
+  else if (question === '__slow__') {
+    const timer = setTimeout(reply,15000);
+    res.on('close', () => clearTimeout(timer));
+  } else reply();
 }).listen(process.env.PORT);
