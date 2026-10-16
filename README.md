@@ -1,6 +1,6 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排，后续按需加入会话记忆。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆和 SSE 对话接口。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
@@ -97,7 +97,7 @@ curl -i http://127.0.0.1:6872/api/chat \
 {"message":"OK","data":{"answer":"模型生成的回答"}}
 ```
 
-`Id` 和 `Question` 必须为非空字符串。当前是单轮聊天，`Id` 为后续会话记忆保留，同一 Id 的请求尚不会携带历史消息。
+`Id` 和 `Question` 必须为非空字符串。普通和流式接口共享 ChatAgent 和按 Id 隔离的记忆，默认携带最近 3 轮完整对话，成功对话后 30 分钟过期。
 
 | 情况 | HTTP 状态 |
 | --- | --- |
@@ -162,7 +162,7 @@ GOTOOLCHAIN=local go run ./cmd/init_knowledge
 
 集合保留四个字段：`id`（VARCHAR 主键，256 字节）、`content`（VARCHAR，65535 字节）、`metadata`（JSON）和 `vector`（FLOAT_VECTOR，实际维度）。索引为 HNSW/COSINE（M=16、efConstruction=128），检索显式使用 COSINE 与 Strong 一致性，ef=max(64, topK)。
 
-`utility/client` 负责创建 Ark 和 Milvus 客户端，调用方复用并关闭。`internal/service/knowledge` 保留 Eino `Store/Retrieve` 接口：Upsert 写入文档，检索支持 TopK 和分数阈值。Store 构造函数读取已有集合，不创建或加载集合。Web 服务通过 `/api/upload` 写入知识库；`/api/chat` 仍提供普通单轮聊天。更换 Embedding 模型时应使用新集合，避免混用向量空间。
+`utility/client` 负责创建 Ark 和 Milvus 客户端，调用方复用并关闭。`internal/service/knowledge` 保留 Eino `Store/Retrieve` 接口：Upsert 写入文档，检索支持 TopK 和分数阈值。Store 构造函数读取已有集合，不创建或加载集合。Web 服务通过 `/api/upload` 写入知识库；`/api/chat` 和 `/api/chat_stream` 共享 ChatAgent 与会话记忆。更换 Embedding 模型时应使用新集合，避免混用向量空间。
 
 三个独立检查/验收命令已移除，真实服务验证通过显式开启的集成测试完成：
 
@@ -240,7 +240,7 @@ GOTOOLCHAIN=local go run ./cmd/knowledge_cmd \
 | `ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED` | true |
 | `ONCALL_TIME_ZONE` | Asia/Shanghai |
 
-`query_internal_docs` 输入 `{"query":"问题"}`，返回 `{"query":"问题","documents":[...]}`；`get_current_time` 输入 `{}`，返回含 UTC 偏移的 `timestamp`、IANA `timezone` 和 `unix_seconds`。工具按配置注册并复用依赖，普通聊天继续保持当前行为。
+`query_internal_docs` 输入 `{"query":"问题"}`，返回 `{"query":"问题","documents":[...]}`；`get_current_time` 输入 `{}`，返回含 UTC 偏移的 `timestamp`、IANA `timezone` 和 `unix_seconds`。工具按配置注册并复用依赖，HTTP 聊天通过 ChatAgent 使用这些工具。
 
 ```bash
 cd OnCallAgent/backend
@@ -256,7 +256,7 @@ GOTOOLCHAIN=local go run ./cmd/recall_cmd --tool query_internal_docs --input '{"
 
 ## ChatAgent 对话编排
 
-独立对话图输入 `*UserMessage`（`id`、`query`、`history`），输出 `*schema.Message`。问题分别进入知识检索和对话参数分支，ChatTemplate 等待两条分支完成，再交给支持工具调用的 ReAct Agent。Agent 使用已有时间和内部文档工具；`POST /api/chat` 继续保持普通单轮聊天行为。
+独立对话图输入 `*UserMessage`（`id`、`query`、`history`），输出 `*schema.Message`。问题分别进入知识检索和对话参数分支，ChatTemplate 等待两条分支完成，再交给支持工具调用的 ReAct Agent。Agent 使用已有时间和内部文档工具；普通及 SSE 接口在启动时编译并共享该图。
 
 | 环境变量 | 默认值 |
 | --- | --- |
@@ -271,6 +271,34 @@ GOTOOLCHAIN=local go run ./cmd/chat_cmd --input '{"id":"demo","query":"恢复后
 GOTOOLCHAIN=local go run ./cmd/chat_cmd --dev --dev-port 52538
 ```
 
-普通模式输出 Message JSON；流式模式输出逐行 Message JSON。为兼容先输出正文再调用工具的模型，检查器会先确认当前模型轮次是否包含工具调用，确认是最终回答后再转发片段，因此回答片段会在该模型轮次完成后开始输出。调试模式可不传问题，注册后等待 SIGINT/SIGTERM；DevOps 日志写入 stderr。每次执行状态独立，ID 不用于保存历史。
+普通模式输出 Message JSON；流式模式输出逐行 Message JSON。为兼容先输出正文再调用工具的模型，检查器会先确认当前模型轮次是否包含工具调用，确认是最终回答后再转发片段，因此回答片段会在该模型轮次完成后开始输出。调试模式可不传问题，注册后等待 SIGINT/SIGTERM；DevOps 日志写入 stderr。独立 CLI 每次执行状态独立，历史仍显式传入；HTTP 接口通过下述记忆服务管理历史。
 
 图与节点配置见 [Graph Schema](backend/internal/ai/agent/chat_pipeline/workflow.json)，完整契约、测试与真实验收记录见 [第 6 步](docs/stage-06.md)。
+
+
+## 会话记忆与 SSE
+
+`POST /api/chat` 调用 Invoke，保持 `message/data.answer`；`POST /api/chat_stream` 调用同一 Agent 的 Stream。两个接口都接收 `Id`、`Question`，同 Id 的请求串行执行，不同 Id 并行。成功后保存 user/assistant 完整消息对，失败、取消及写出失败不保存本轮。
+
+| 环境变量 | 默认值 |
+| --- | --- |
+| `ONCALL_CHAT_MEMORY_MAX_ROUNDS` | 3 |
+| `ONCALL_CHAT_MEMORY_TTL` | 30m，从最近一次成功对话计算 |
+
+记忆仅存在于当前进程，服务重启后清空，多实例不共享。读取返回副本，不续期；过期记录按访问清理。现有 Agent 总超时也覆盖等待同会话锁的时间。
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run .
+
+curl -sS http://127.0.0.1:6872/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"Id":"demo","Question":"请记住我的值班代号是 Aurora。"}'
+curl -N http://127.0.0.1:6872/api/chat_stream \
+  -H 'Content-Type: application/json' \
+  -d '{"Id":"demo","Question":"我的值班代号是什么？"}'
+```
+
+SSE 成功事件顺序为 `connected → message... → done`，失败为 `connected → error`。data 始终为 JSON，例如 `{"content":"第一行\n第二行"}`；结束后不追加统一 JSON。参数错误在流开始前仍返回 HTTP 400 JSON。connected 在等待锁和模型初始化前发出，回答片段保持第 6 步的模型轮次确认行为。
+
+完整事件定义、并发和过期规则、Postman 本地模拟命令及真实验收结果见 [第 7 步](docs/stage-07.md)。

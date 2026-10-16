@@ -11,7 +11,7 @@ Content-Type: application/json
 
 成功返回 HTTP 200：`{"message":"OK","data":{"answer":"..."}}`。
 
-当前只发送本轮问题，不添加历史、检索或工具调用。`Id` 为会话标识字段，暂不参与模型消息生成。
+阶段 2 完成时只发送本轮问题，不添加历史、检索或工具调用。当时 `Id` 为预留会话标识。当前 HTTP 接口已接入 ChatAgent 与会话记忆，见 [第 7 步](stage-07.md)。
 
 ## 调用关系
 
