@@ -190,6 +190,8 @@ ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
 | `ONCALL_KNOWLEDGE_CHUNK_OVERLAP` | 200 字节，非负且小于块大小 |
 | `ONCALL_KNOWLEDGE_BATCH_SIZE` | 16，必须为正 |
 
+KnowledgeService 校验并原子保存文件后，构造指向实际保存路径的 `document.Source`，调用启动时编译并复用的 KnowledgeIndexing Graph。Loader 通过调用选项接收原始逻辑来源，切分、Embedding、批量写入和旧版本清理统一在图内完成。
+
 切分识别 Markdown 标题，忽略代码围栏中的标题符号，块和重叠均不拆断字符，不跨标题重叠。元数据保留来源、标题、序号、片段与文档 hash、文档 ID 和版本。批量大小不改变片段 ID。
 
 ```bash
@@ -199,9 +201,9 @@ curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.
 curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.0.0.1:6872/api/upload
 ```
 
-成功数据为 `fileName`（安全保存名）、`filePath`（真实绝对路径）、`fileSize`（实际字节数）、`source`、`contentHash`、`chunkCount`。响应仍为 `message/data`。无效或空文档返回 400，超限 413，格式不支持 415；保存、入库或旧版本清理失败返回 503，依赖超时 504，后两者带 `data.retryable=true`，可重复提交收敛。底层错误不会回显。
+成功数据为 `fileName`（安全保存名）、`filePath`（真实绝对路径）、`fileSize`（实际字节数）、`source`、`contentHash`、`chunkCount`。响应仍为 `message/data`。无效或空文档返回 400，超限 413，格式不支持 415；保存失败返回 500，`data={"stage":"save","retryable":true}`；Graph 入库或旧版本清理失败返回 503，超时返回 504，均带 `data={"stage":"ingest","retryable":true}`。请求取消返回 408。错误响应不返回成功文件信息或 chunkCount，底层错误不会回显。
 
-同一来源在单进程内串行处理，不支持多个进程同时更新同一来源。失败期间允许暂时混合新旧片段；全部新批次确认前不会清理旧版本。完整约定与验收说明见 `docs/stage-04.md`。
+同一来源在单进程内串行处理，不支持多个进程同时更新同一来源。失败期间允许暂时混合新旧片段；全部新批次确认前不会清理旧版本。完整约定与验收说明见 [第 4.2 步](docs/stage-04-2.md)。
 
 ```bash
 # 显式连接云端，验证上传、重复、更新和分批失败后的重试；保留带标记的验收来源。

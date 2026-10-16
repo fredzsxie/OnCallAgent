@@ -2,7 +2,7 @@
 
 ## 入库核心
 
-`KnowledgeService.Ingest(ctx, source, reader)` 复用已创建的向量 Store，按来源保存文件、识别标题并切分、分批 EmbedStrings/Upsert，最后清理同一来源的旧版本。HTTP 使用原始文件名，目录导入使用相对路径作为来源，区分大小写。
+`KnowledgeService.Ingest(ctx, source, reader)` 校验并保存文件，再调用已编译的 KnowledgeIndexing Graph，由图内组件识别标题并切分、分批 EmbedStrings/Upsert，最后清理同一来源的旧版本。图接入与错误分类的完整说明见 [第 4.2 步](stage-04-2.md)。HTTP 使用原始文件名，目录导入使用相对路径作为来源，区分大小写。
 
 文档 ID 是来源的 SHA-256；版本包含整文件内容 hash、切分大小、重叠长度和算法版本；分块 ID 包含文档 ID、版本与块序号。重复提交会使用相同 ID Upsert，改变批量大小不会改变分块 ID。每次写入均检查返回的 ID；只有全部批次确认后才删除其他版本。写入或清理失败返回可重试错误，重试收敛至完整新版本；失败期间允许新旧片段并存。
 
@@ -10,7 +10,7 @@
 
 保存名称由来源 hash 和整文件 hash 组成，保留小写扩展名；临时文件完整写入、关闭后原子重命名，使用文件 Stat 获取实际大小，解析保存目录的真实绝对路径。文件格式、空白、编码和大小在入库前检查。旧文件保留，旧版本清理只影响同一文档的向量记录。
 
-同一来源在当前服务进程内串行处理，等待锁时可取消；本阶段约定不同进程不同时更新同一来源。客户端通过构造函数注入并复用，不引入 Graph、队列或新依赖。
+同一来源在当前服务进程内串行处理，等待锁时可取消；本阶段约定不同进程不同时更新同一来源。客户端和 Graph 在启动时创建并复用，通过索引函数注入服务；不引入队列或新依赖。
 
 ## 配置
 
@@ -43,8 +43,9 @@
 | multipart、数量、空文档或编码错误 | 400 | null |
 | 文件或请求体超限 | 413 | null |
 | 不支持的扩展名或 Content-Type | 415 | null |
-| 保存、入库或清理失败 | 503 | `{"retryable":true}` |
-| 依赖调用超时 | 504 | `{"retryable":true}` |
+| 保存失败 | 500 | `{"stage":"save","retryable":true}` |
+| Graph 入库或清理失败 | 503 | `{"stage":"ingest","retryable":true}` |
+| Graph 调用超时 | 504 | `{"stage":"ingest","retryable":true}` |
 | 请求取消且还能写回响应 | 408 | null |
 
 控制器只负责取得文件并调用服务；统一中间件隐藏底层错误。启动时创建并复用 ChatModel、Embedding 和 Milvus 客户端，退出时关闭；需要预先执行 `init_knowledge`，Web 服务不会自动创建集合。聊天接口仍然是单轮聊天。
@@ -68,7 +69,7 @@ curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.
 ```bash
 # 默认不连接云端。
 GOTOOLCHAIN=local go test -timeout 60s ./test/upload ./test/chat
-# 显式调用云端，保留 stage04_acceptance_<随机ID>.md 来源记录。
+# 显式调用云端，保留 stage04_2_acceptance_<随机ID>.md 来源记录。
 ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
   ./test/upload -run '^TestUploadIntegration$'
 ```

@@ -35,9 +35,9 @@ Agent 编排目录统一使用 `backend/internal/ai/agent/xxx_pipeline/`，后�
 | MarkdownSplitter | DocumentTransformer：`[]*schema.Document → []*schema.Document` | `Knowledge.ChunkSize/ChunkOverlap`；直接调用现有 `knowledge.Split`，保留标题和稳定 ID 算法 |
 | MilvusIndexer | Indexer：`[]*schema.Document → []string` | 注入 `DocumentStore`、`Knowledge.BatchSize`；共享批量确认和旧版本清理逻辑，Embedding 由 Store 内部调用 |
 
-`Root` 默认当前目录，来源统一为根目录内的相对路径并使用 `/`。同一文件的绝对 URI、相对 URI 使用相同来源和 ID。原始字节的 SHA-256 用于 `document_hash`；片段保留 `source`、`title`、`chunk_index`、`content_hash`、`document_id` 和 `version`。切分参数变化会更新版本，批量大小变化不会更新版本。
+`Root` 默认当前目录，来源默认统一为根目录内的相对路径并使用 `/`。上传通过 `WithLogicalSource(source)` LoaderOption 定向传给 `FileLoader`，在保留物理路径检查的前提下覆盖逻辑来源；该选项不改变图的输入输出或拓扑，独立 CLI 未传选项时仍使用相对路径。同一文件的绝对 URI、相对 URI 使用相同来源和 ID。原始字节的 SHA-256 用于 `document_hash`；片段保留 `source`、`title`、`chunk_index`、`content_hash`、`document_id` 和 `version`。切分参数变化会更新版本，批量大小变化不会更新版本。
 
-上传和所有图实例共享进程内同来源锁。新版本所有批次的返回 ID 都确认一致后，才调用 `DeleteOld` 清理同来源旧版本。写入或清理失败时保留旧版本；使用相同内容重试可收敛。空白、空文件、非法 UTF-8、NUL 内容不进入 Store。该锁只协调当前进程，多进程并发更新同一来源需要后续增加跨进程协调。
+上传使用独立的进程级来源锁覆盖保存与 Graph 调用；Indexer 在所有图实例间共享同来源写入锁，避免上传重入同一把锁。新版本所有批次的返回 ID 都确认一致后，才调用 `DeleteOld` 清理同来源旧版本。写入或清理失败时保留旧版本；使用相同内容重试可收敛。空白、空文件、非法 UTF-8、NUL 内容不进入 Store。该锁只协调当前进程，多进程并发更新同一来源需要后续增加跨进程协调。
 
 ## 启动与调试
 
