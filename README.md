@@ -10,6 +10,7 @@ backend/
 ├── cmd/                     # modelcheck、init_knowledge 和 knowledge_cmd 独立命令
 ├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
+│   ├── ai/agent/           # 各 Agent 的 xxx_pipeline 编排与组件适配
 │   ├── config/             # 配置读取、环境变量覆盖和校验
 │   ├── controller/         # 接收 HTTP 请求，调用 service
 │   └── service/            # 健康检查、ChatService 和知识库向量服务
@@ -18,6 +19,8 @@ backend/
 │   └── middleware/         # message/data 统一响应及状态码
 └── test/                   # 所有测试文件和本地协议测试
 ```
+
+当前及后续两个 Agent 的编排代码、组件适配和 Graph Schema 统一放在 `backend/internal/ai/agent/xxx_pipeline/`。当前知识入库图为 `knowledge_index_pipeline/`；共享知识库业务逻辑继续放在 `internal/service/knowledge/`，测试继续放在 `backend/test/`。
 
 后续前端代码放在根目录 `frontend/`，当前没有前端页面或运行时 mock 模式。
 
@@ -218,4 +221,4 @@ GOTOOLCHAIN=local go run ./cmd/knowledge_cmd \
   --dev --root ./test/knowledge/pipeline/testdata --dev-port 52538
 ```
 
-普通模式输出 JSON ID 数组后退出；调试模式可不指定文件，图注册后等待 SIGINT/SIGTERM。调试输入为 `{"URI":"runbook.md"}`。图配置见 [Graph Schema](backend/internal/service/knowledge/pipeline/workflow.json)，节点配置、幂等规则和验收结果见 [第 4.1 步](docs/stage-04-1.md)。
+普通模式输出 JSON ID 数组后退出；调试模式可不指定文件，图注册后等待 SIGINT/SIGTERM。调试输入为 `{"URI":"runbook.md"}`。图配置见 [Graph Schema](backend/internal/ai/agent/knowledge_index_pipeline/workflow.json)，节点配置、幂等规则和验收结果见 [第 4.1 步](docs/stage-04-1.md)。

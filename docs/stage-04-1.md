@@ -8,7 +8,7 @@ START → FileLoader → MarkdownSplitter → MilvusIndexer → END
 
 ## 文件与契约
 
-- `backend/internal/service/knowledge/pipeline/`：`config.go`、`loader.go`、`transformer.go`、`indexer.go`、`orchestration.go` 和 `workflow.json`。
+- `backend/internal/ai/agent/knowledge_index_pipeline/`：`config.go`、`loader.go`、`transformer.go`、`indexer.go`、`orchestration.go` 和 `workflow.json`。
 - `backend/internal/service/knowledge/ingestion.go`：共享来源校验、读取、同来源锁和批量入库核心；`service.go` 复用这些函数。
 - `backend/cmd/knowledge_cmd/main.go`：普通命令与开发调试入口，创建并关闭 Embedding、Milvus 客户端。
 - `backend/test/knowledge/pipeline/`：图执行、Schema 一致性、调试服务、显式云端集成测试及 `testdata/runbook.md`。
@@ -16,14 +16,16 @@ START → FileLoader → MarkdownSplitter → MilvusIndexer → END
 ```go
 func BuildKnowledgeIndexing(
     ctx context.Context,
-    cfg pipeline.Config,
+    cfg knowledge_index_pipeline.Config,
     store knowledge.DocumentStore,
 ) (compose.Runnable[document.Source, []string], error)
 ```
 
 `Config` 提供 `Root` 和 `Knowledge config.Knowledge`。所有节点注册、边连接及 Compile 错误均向调用方返回。图内不创建客户端，也不关闭调用方注入的 Store。
 
-`pipeline/workflow.json` 是按编排代码整理的 Graph Schema，本阶段按最终要求不操作可视化编辑器，也不将它标为编辑器导出文件。已使用 Eino Dev 1.3.0 附带的 `eino-bin nclc gencode` 实际生成初始 Go 编排，再补齐依赖注入、构造函数及错误检查。Schema 中三个组件均标记为本地自定义适配组件；没有 Redis/OpenAI 组件或密钥。根目录的另一张 `workflow.json` 保留。
+`knowledge_index_pipeline/workflow.json` 是按编排代码整理的 Graph Schema，本阶段按最终要求不操作可视化编辑器，也不将它标为编辑器导出文件。已使用 Eino Dev 1.3.0 附带的 `eino-bin nclc gencode` 实际生成初始 Go 编排，再补齐依赖注入、构造函数及错误检查。Schema 中三个组件均标记为本地自定义适配组件；没有 Redis/OpenAI 组件或密钥。根目录的另一张 `workflow.json` 保留。
+
+Agent 编排目录统一使用 `backend/internal/ai/agent/xxx_pipeline/`，后续两个 Agent 同样遵循此约定。共享业务逻辑保留在 `internal/service/knowledge/`；测试和 CLI 路径不变，因此启动与验收命令不变。
 
 ## 节点配置清单
 
@@ -96,3 +98,9 @@ ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test \
 - 真实云端图入库通过：保留来源 `stage04_1_acceptance_7c89ca4967edaca4ba72766aa9c3e5fe.md`，2 个片段；重复执行后可见主键集合不变。
 - 实际普通 CLI 通过：保留来源 `stage04_1_cli_acceptance_c1932a6baf624d5995eba2e7ceed709c.md`，1 个片段；标准输出为 JSON ID 数组并正常退出；复用该来源验证 `--dev --file`，输出 ID 后保持存活并响应 SIGTERM。
 - 其它阶段的真实聊天、上传和向量验收未在本次重复执行；默认回归中对应的显式集成测试为跳过。
+
+## Agent 目录调整验收
+
+当前图已迁移到 `backend/internal/ai/agent/knowledge_index_pipeline/`，同步更新包名、CLI 导入、Graph Schema 组件标识、Schema 测试路径及文档链接。
+
+迁移后执行知识库本地回归、`go test -race ./test/knowledge/pipeline -count=1`（含调试服务发现和信号退出）、`go vet ./...`、`go build ./...`，均通过。该次仅调整目录与引用，真实云端集成测试未重复执行。CLI 启动命令保持不变。

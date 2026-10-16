@@ -15,27 +15,27 @@ import (
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/compose"
+	knowledgepipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge/pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 )
 
-func settings(t *testing.T) pipeline.Config {
+func settings(t *testing.T) knowledgepipeline.Config {
 	t.Helper()
-	return pipeline.Config{Root: t.TempDir(), Knowledge: config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: 4096, ChunkSize: 64, ChunkOverlap: 8, BatchSize: 2}}
+	return knowledgepipeline.Config{Root: t.TempDir(), Knowledge: config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: 4096, ChunkSize: 64, ChunkOverlap: 8, BatchSize: 2}}
 }
 
-func build(t *testing.T, cfg pipeline.Config, store knowledge.DocumentStore) compose.Runnable[document.Source, []string] {
+func build(t *testing.T, cfg knowledgepipeline.Config, store knowledge.DocumentStore) compose.Runnable[document.Source, []string] {
 	t.Helper()
-	g, err := pipeline.BuildKnowledgeIndexing(context.Background(), cfg, store)
+	g, err := knowledgepipeline.BuildKnowledgeIndexing(context.Background(), cfg, store)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return g
 }
 
-func write(t *testing.T, cfg pipeline.Config, name, text string) string {
+func write(t *testing.T, cfg knowledgepipeline.Config, name, text string) string {
 	t.Helper()
 	filename := filepath.Join(cfg.Root, name)
 	if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
@@ -185,7 +185,7 @@ func TestGraphRejectsInvalidDocuments(t *testing.T) {
 	cfg := settings(t)
 	store := &testutil.MemoryStore{}
 	g := build(t, cfg, store)
-	outside := write(t, pipeline.Config{Root: t.TempDir()}, "outside.md", "outside")
+	outside := write(t, knowledgepipeline.Config{Root: t.TempDir()}, "outside.md", "outside")
 	if err := os.Symlink(outside, filepath.Join(cfg.Root, "link.md")); err != nil {
 		t.Fatal(err)
 	}
@@ -263,11 +263,11 @@ func TestGraphCancellationAndSharedSourceLock(t *testing.T) {
 
 func TestBuildValidatesDependencies(t *testing.T) {
 	cfg := settings(t)
-	if _, err := pipeline.BuildKnowledgeIndexing(context.Background(), cfg, nil); err == nil {
+	if _, err := knowledgepipeline.BuildKnowledgeIndexing(context.Background(), cfg, nil); err == nil {
 		t.Fatal("accepted nil store")
 	}
 	cfg.Knowledge.BatchSize = 0
-	if _, err := pipeline.BuildKnowledgeIndexing(context.Background(), cfg, &testutil.MemoryStore{}); err == nil {
+	if _, err := knowledgepipeline.BuildKnowledgeIndexing(context.Background(), cfg, &testutil.MemoryStore{}); err == nil {
 		t.Fatal("accepted invalid config")
 	}
 }

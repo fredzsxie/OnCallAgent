@@ -17,7 +17,7 @@ type compiledGraph struct{ info *compose.GraphInfo }
 func (c *compiledGraph) OnFinish(_ context.Context, info *compose.GraphInfo) { c.info = info }
 
 func TestSchemaMatchesCompiledGraph(t *testing.T) {
-	data, err := os.ReadFile("../../../internal/service/knowledge/pipeline/workflow.json")
+	data, err := os.ReadFile("../../../internal/ai/agent/knowledge_index_pipeline/workflow.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSchemaMatchesCompiledGraph(t *testing.T) {
 		if !ok || string(actual.Component) != node.Type || node.ComponentSchema.Component != node.Type {
 			t.Fatalf("node differs: %s", node.Key)
 		}
-		if node.ComponentSchema.Identifier != "github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge/pipeline/"+node.Key {
+		if node.ComponentSchema.Identifier != "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/"+node.Key {
 			t.Fatalf("wrong component identifier: %s", node.Key)
 		}
 		component, ok := actual.Instance.(interface{ GetType() string })

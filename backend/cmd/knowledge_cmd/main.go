@@ -14,9 +14,9 @@ import (
 
 	"github.com/cloudwego/eino-ext/devops"
 	"github.com/cloudwego/eino/components/document"
+	knowledgepipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge/pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 )
 
@@ -79,7 +79,7 @@ func run() error {
 			return err
 		}
 	}
-	graph, err := pipeline.BuildKnowledgeIndexing(ctx, pipeline.Config{Root: *root, Knowledge: cfg}, store)
+	graph, err := knowledgepipeline.BuildKnowledgeIndexing(ctx, knowledgepipeline.Config{Root: *root, Knowledge: cfg}, store)
 	if err != nil {
 		return err
 	}

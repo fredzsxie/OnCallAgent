@@ -41,7 +41,7 @@
         "name": "FileLoader",
         "component": "Loader",
         "component_source": "custom",
-        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge/pipeline/FileLoader",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/FileLoader",
         "input_type": {
           "title": "document.Source"
         },
@@ -49,7 +49,7 @@
           "title": "[]*schema.Document"
         },
         "config": {
-          "description": "Injected through pipeline.Config; clients owned by the caller.",
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
           "schema": {
             "type": "object",
             "properties": {}
@@ -76,7 +76,7 @@
         "name": "MarkdownSplitter",
         "component": "DocumentTransformer",
         "component_source": "custom",
-        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge/pipeline/MarkdownSplitter",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/MarkdownSplitter",
         "input_type": {
           "title": "[]*schema.Document"
         },
@@ -84,7 +84,7 @@
           "title": "[]*schema.Document"
         },
         "config": {
-          "description": "Injected through pipeline.Config; clients owned by the caller.",
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
           "schema": {
             "type": "object",
             "properties": {}
@@ -111,7 +111,7 @@
         "name": "MilvusIndexer",
         "component": "Indexer",
         "component_source": "custom",
-        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge/pipeline/MilvusIndexer",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/MilvusIndexer",
         "input_type": {
           "title": "[]*schema.Document"
         },
@@ -119,7 +119,7 @@
           "title": "[]string"
         },
         "config": {
-          "description": "Injected through pipeline.Config; clients owned by the caller.",
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
           "schema": {
             "type": "object",
             "properties": {}

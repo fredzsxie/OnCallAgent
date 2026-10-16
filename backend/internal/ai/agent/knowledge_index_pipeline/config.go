@@ -1,4 +1,4 @@
-package pipeline
+package knowledge_index_pipeline
 
 import (
 	"os"
