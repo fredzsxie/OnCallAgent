@@ -32,8 +32,8 @@ func TestSchemaMatchesCompiledGraph(t *testing.T) {
 		Input  struct{ Title string } `json:"input_type"`
 		Output struct{ Title string } `json:"output_type"`
 		Nodes  []struct {
-			Key, Type string
-			Options   struct {
+			ID, Key, Type string
+			Options       struct {
 				OutputKey string `json:"output_key"`
 			} `json:"node_option"`
 			Component struct {
@@ -43,8 +43,11 @@ func TestSchemaMatchesCompiledGraph(t *testing.T) {
 			} `json:"component_schema"`
 		}
 		Edges []struct {
-			Source string `json:"source_node_key"`
-			Target string `json:"target_node_key"`
+			ID       string `json:"id"`
+			SourceID string `json:"sourceWorkflowNodeId"`
+			TargetID string `json:"targetWorkflowNodeId"`
+			Source   string `json:"source_node_key"`
+			Target   string `json:"target_node_key"`
 		}
 	}
 	if err := json.Unmarshal(data, &spec); err != nil {
@@ -62,6 +65,15 @@ func TestSchemaMatchesCompiledGraph(t *testing.T) {
 	}
 	if info.InputType != reflect.TypeOf((*pipeline.UserMessage)(nil)) || info.OutputType != reflect.TypeOf((*schema.Message)(nil)) || spec.Input.Title != "*UserMessage" || spec.Output.Title != "*schema.Message" {
 		t.Fatal("graph types differ")
+	}
+	nodeIDs := map[string]string{}
+	seenIDs := map[string]bool{}
+	for _, n := range spec.Nodes {
+		if n.ID == "" || seenIDs[n.ID] {
+			t.Fatalf("missing or duplicate canvas node ID: %s", n.Key)
+		}
+		nodeIDs[n.Key] = n.ID
+		seenIDs[n.ID] = true
 	}
 	for _, n := range spec.Nodes {
 		if n.Type == "start" || n.Type == "end" {
@@ -85,7 +97,15 @@ func TestSchemaMatchesCompiledGraph(t *testing.T) {
 		}
 	}
 	edges := map[string][]string{}
+	edgeIDs := map[string]bool{}
 	for _, e := range spec.Edges {
+		if e.ID == "" || edgeIDs[e.ID] {
+			t.Fatal("missing or duplicate canvas edge ID")
+		}
+		edgeIDs[e.ID] = true
+		if nodeIDs[e.Source] == "" || nodeIDs[e.Target] == "" || e.SourceID != nodeIDs[e.Source] || e.TargetID != nodeIDs[e.Target] {
+			t.Fatalf("canvas edge does not reference its endpoint nodes: %s", e.ID)
+		}
 		edges[e.Source] = append(edges[e.Source], e.Target)
 	}
 	if len(spec.Edges) != 7 || !reflect.DeepEqual(edges, info.Edges) {

@@ -325,31 +325,59 @@
   "edges": [
     {
       "source_node_key": "start",
-      "target_node_key": "InputToRag"
+      "target_node_key": "InputToRag",
+      "id": "start_InputToRag",
+      "name": "",
+      "sourceWorkflowNodeId": "start",
+      "targetWorkflowNodeId": "InputToRag"
     },
     {
       "source_node_key": "start",
-      "target_node_key": "InputToChat"
+      "target_node_key": "InputToChat",
+      "id": "start_InputToChat",
+      "name": "",
+      "sourceWorkflowNodeId": "start",
+      "targetWorkflowNodeId": "InputToChat"
     },
     {
       "source_node_key": "InputToRag",
-      "target_node_key": "MilvusRetriever"
+      "target_node_key": "MilvusRetriever",
+      "id": "InputToRag_MilvusRetriever",
+      "name": "",
+      "sourceWorkflowNodeId": "InputToRag",
+      "targetWorkflowNodeId": "MilvusRetriever"
     },
     {
       "source_node_key": "MilvusRetriever",
-      "target_node_key": "ChatTemplate"
+      "target_node_key": "ChatTemplate",
+      "id": "MilvusRetriever_ChatTemplate",
+      "name": "",
+      "sourceWorkflowNodeId": "MilvusRetriever",
+      "targetWorkflowNodeId": "ChatTemplate"
     },
     {
       "source_node_key": "InputToChat",
-      "target_node_key": "ChatTemplate"
+      "target_node_key": "ChatTemplate",
+      "id": "InputToChat_ChatTemplate",
+      "name": "",
+      "sourceWorkflowNodeId": "InputToChat",
+      "targetWorkflowNodeId": "ChatTemplate"
     },
     {
       "source_node_key": "ChatTemplate",
-      "target_node_key": "ReActAgent"
+      "target_node_key": "ReActAgent",
+      "id": "ChatTemplate_ReActAgent",
+      "name": "",
+      "sourceWorkflowNodeId": "ChatTemplate",
+      "targetWorkflowNodeId": "ReActAgent"
     },
     {
       "source_node_key": "ReActAgent",
-      "target_node_key": "end"
+      "target_node_key": "end",
+      "id": "ReActAgent_end",
+      "name": "",
+      "sourceWorkflowNodeId": "ReActAgent",
+      "targetWorkflowNodeId": "end"
     }
   ],
   "branches": [],

@@ -55,7 +55,7 @@ Retriever 使用原有 Embedding、FLOAT_VECTOR、集合维度、HNSW/COSINE 和
 
 提示词要求依据资料回答并引用来源；文档和工具结果仅作为证据，不能覆盖系统指令。时间问题使用 `get_current_time`，工具开关沿用第 5 步配置。
 
-`workflow.json` 为按运行编排整理的 Graph Schema，没有操作可视化编辑器，不标称编辑器导出文件。使用本机 Eino Dev 1.3.0 附带的 `eino-bin nclc gencode` 生成初始编排，再补齐类型、组件、依赖注入、错误检查及 Invoke/Stream 适配。Schema 测试通过 Compile 回调核对五个业务节点、START/END、七条边、类型及 documents 映射。
+`workflow.json` 为按运行编排整理的 Graph Schema，没有操作可视化编辑器，不标称编辑器导出文件。使用本机 Eino Dev 1.3.0 附带的 `eino-bin nclc gencode` 生成初始编排，再补齐类型、组件、依赖注入、错误检查及 Invoke/Stream 适配。Schema 测试通过 Compile 回调核对五个业务节点、START/END、七条边、类型及 documents 映射。每条边同时保留代码生成使用的 source_node_key/target_node_key，以及画布连线使用的 sourceWorkflowNodeId/targetWorkflowNodeId；后者引用节点 id，边 id 唯一。回归测试同步检查两套端点引用，避免画布显示为离散节点。
 
 DevOps v0.1.7 的运行时画布会为 START 分支额外插入一个 `parallel` 展示节点，因此调试接口显示八个节点、八条边；业务图的七节点七边不变。
 
