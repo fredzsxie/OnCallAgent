@@ -8,11 +8,11 @@
 | --- | --- |
 | `backend/internal/config/operations.go`、`retrieval.go` | 工具开关、地址、认证、预算和日志默认参数校验 |
 | `backend/internal/service/operations/` | 安全错误分类、结构化结果、日志输入与时间转换 |
-| `backend/utility/client/{tool_http,prometheus,log_mcp,operations}.go` | HTTP 连接复用、认证、MCP 生命周期及按需装配 |
+| `backend/utility/client/{tool_http,prometheus,log_mcp,operations}.go` | Prometheus HTTP 连接复用、CLS stdio 子进程生命周期及按需装配 |
 | `backend/internal/ai/tools/{operations,query_metrics_alerts,query_log,registry}.go` | Eino 适配、严格 JSON 输入、注册和 Schema |
 | `backend/main.go`、`backend/cmd/{chat_cmd,recall_cmd}/main.go` | 复用并集中关闭新增客户端 |
 | `backend/cmd/tools_cmd/main.go` | 独立列表、MCP 检查与工具调用 |
-| `backend/test/config/operations_test.go`、`backend/test/operations/` | 配置、真实本地 HTTP/MCP 客户端、CLI 与显式真实验收 |
+| `backend/test/config/operations_test.go`、`backend/test/operations/` | 配置、本地 HTTP/stdio MCP 客户端、CLI 与显式真实验收 |
 | `backend/test/chat/pipeline/operations_test.go` | 真实图的 Invoke/Stream 工具调用及失败传播 |
 | 既有工具、检索、对话集成测试 | 更新显式 Registry 依赖注入签名 |
 | `backend/.env.example`、`go.mod`、`go.sum` | 配置示例和锁定依赖 |
@@ -32,23 +32,23 @@
 | `ONCALL_PROMETHEUS_AUTH_TYPE` | `none`，可选 `basic`、`bearer` |
 | `ONCALL_PROMETHEUS_USERNAME` / `PASSWORD` | Basic 用户名、密码，变量共用前缀 `ONCALL_PROMETHEUS_` |
 | `ONCALL_PROMETHEUS_BEARER_TOKEN` | Bearer Token，默认空 |
-| `ONCALL_LOG_MCP_URL` | 默认空，填完整 Streamable HTTP 入口，例如 `https://日志网关/mcp` |
+| `ONCALL_LOG_MCP_COMMAND` | `npx` |
+| `ONCALL_LOG_MCP_ARGS_JSON` | `'["-y","cls-mcp-server@1.2.0"]'` |
 | `ONCALL_LOG_MCP_TIMEOUT` | `15s`，初始化和单次调用各有独立预算 |
-| `ONCALL_LOG_MCP_AUTH_TYPE` | `none`，可选 `basic`、`bearer`、`header` |
-| `ONCALL_LOG_MCP_USERNAME` / `PASSWORD` | Basic 用户名、密码，共用前缀 `ONCALL_LOG_MCP_` |
-| `ONCALL_LOG_MCP_BEARER_TOKEN` | Bearer Token，默认空 |
-| `ONCALL_LOG_MCP_HEADER_NAME` / `HEADER_VALUE` | 自定义认证 Header 名和值，共用前缀 `ONCALL_LOG_MCP_` |
+| `TENCENTCLOUD_SECRET_ID` / `TENCENTCLOUD_SECRET_KEY` | 启用日志工具时必填，由本地 `.env` 提供 |
+| `TENCENTCLOUD_API_BASE_HOST` | 可选；VPC 内可设为 `internal.tencentcloudapi.com` |
+| `ONCALL_TIME_ZONE` | `Asia/Shanghai`，作为 MCP 子进程的 `TZ` |
 | `ONCALL_LOG_REGION` / `ONCALL_LOG_TOPIC_ID` | 默认空，允许调用输入覆盖 |
 | `ONCALL_LOG_LOOKBACK` | `15m`，最小 1ms |
 | `ONCALL_LOG_LIMIT` | `20`，范围 1–1000 |
 
-布尔值、时长和数量的显式空值报错。只加载启用或当前操作需要的外部配置，禁用 CLS 时空 URL 不影响启动；离线列定义无需有效外部地址和凭据。启用后检查 http(s) 地址、正超时及对应认证字段；地址禁止内嵌用户名密码、query、fragment。认证模式不可混填，Header 禁止换行和覆盖协议字段。认证值仅从环境配置读取，模型输入不能指定地址或认证。
+布尔值、时长和数量的显式空值报错。只加载启用或当前操作需要的外部配置；日志工具关闭时，不要求 SecretId/SecretKey，也不启动子进程。启用后校验命令、参数 JSON、正超时及密钥。参数作为数组传给进程，不通过 shell 拼接。
 
-腾讯云 SecretId/SecretKey 应配置在 CLS MCP 服务端；本应用配置的是 MCP 入口认证。只有 Streamable HTTP，无 SSE/stdio 回退。Streamable HTTP 的响应允许协议内的 `text/event-stream`，这不等于使用旧 SSE 传输。
+官方服务通过 `npx -y cls-mcp-server@1.2.0` 使用 stdio；运行 Go 后端的主机需安装 Node.js/npm，首次启动需能从 npm 获取固定版本。腾讯云 SecretId/SecretKey 由 OnCallAgent 从本地 `.env` 读取并传给 CLS MCP。子进程只收到 PATH、HOME、`TRANSPORT=stdio`、CLS 凭据、可选 API Host 和时区，不继承聊天模型或 Milvus 环境变量。[腾讯 CLS MCP Server](https://github.com/Tencent/cls-mcp-server) [npm 包元数据](https://github.com/Tencent/cls-mcp-server/blob/main/package.json)
 
 ## 工具定义
 
-`tools_cmd --list-tools` 输出按开关启用的工具及完整输入/输出 JSON Schema；`--mcp-tools` 输出远端工具定义并校验 `SearchLog`。远端其它工具不直接注册给 Agent。
+`tools_cmd --list-tools` 输出按开关启用的工具及完整输入/输出 JSON Schema；`--mcp-tools` 启动配置的 stdio 进程，输出工具定义并校验 `SearchLog`。服务端其它工具不直接注册给 Agent。
 
 ### query_prometheus_alerts
 
@@ -78,7 +78,7 @@
 
 ## 生命周期与错误
 
-`utility/client.OpenOperations` 只创建启用的客户端。MCP 完成 Start → Initialize → tools/list → SearchLog Schema 检查后复用；初始化失败立即关闭，退出集中 Close。请求和认证状态按单次调用隔离，认证同样应用到关闭会话的 DELETE。响应读取上限为 8 MiB。
+`utility/client.OpenOperations` 只创建启用的客户端。MCP 完成子进程启动 → Initialize → tools/list → SearchLog Schema 检查后复用；初始化失败立即关闭，退出集中 Close。响应和错误走 stdio 协议，不暴露子进程诊断内容。
 
 工具构造函数只接收窄接口，不创建连接。Registry 显式接收 Retriever、时钟、告警与日志依赖；Web、chat_cmd 和 recall_cmd 更新装配。独立运维调用无需模型、Embedding 或 Milvus；仅列定义不建立外部连接。
 
@@ -138,7 +138,7 @@ node --test backend/test/frontend/*.test.mjs
 
 以上均通过。前端 Node 测试 15 项通过、1 项真实集成测试按开关跳过。全量 Go 回归包含普通聊天、SSE、上传、已有图、检索、模型检查和 CLI。
 
-本地 HTTP/MCP 服务测试实际 SDK：认证四种模式、15 秒配置预算及更早截止、取消、空数组、同名告警实例、非法 JSON、上游失败、握手、Schema 不兼容清理、日志毫秒转换、结构化/SQL 结果、关闭会话、并发请求认证隔离和客户端复用。真实 ChatAgent 配合脚本模型验证 Invoke/Stream 调用新增工具以及失败终止。禁用工具不连接，时间/列表/运维模式按需初始化。
+本地 HTTP fixture 验证 Prometheus SDK 请求、none/Basic/Bearer 认证、错误与空告警；本地 stdio 子进程使用真实 MCP SDK 验证握手、工具列表和 SearchLog 调用、Schema 不兼容、错误退出、超时/取消和关闭。测试确认只把 CLS 所需密钥传给子进程，不会继承聊天模型/Milvus 凭据。日志条件到毫秒的转换、结构化记录和 SQL 结果由服务及工具测试覆盖。真实 ChatAgent 配合脚本模型验证 Invoke/Stream 调用新增工具以及失败终止。禁用工具不连接，时间/列表/运维模式按需初始化。
 
 Postman 本地模拟另开终端运行：
 
@@ -153,7 +153,7 @@ GOTOOLCHAIN=local go -C backend test ./test/operations \
   -run '^TestPostmanOperationsCLI$' -v -count=1
 ```
 
-16 个 CLI 场景全部通过，覆盖 Prometheus 正常/空结果/认证/非法 JSON/503/慢响应，以及 MCP 列表、日志普通/空/SQL、认证、截断内容、上游错误、超时、工具 Schema 不匹配。测试运行真实 tools_cmd 与 MCP SDK，模拟仅替代上游服务；不据此声称云端可用。停止模拟用 Ctrl+C。Postman YAML 仅为测试资产。
+6 个 Prometheus CLI 场景全部通过，覆盖正常/空结果/认证/非法 JSON/503/慢响应。CLS 使用独立的本地 stdio MCP 子进程 fixture，不再通过 HTTP mock 模拟。停止模拟用 Ctrl+C。Postman YAML 仅为测试资产。
 
 模拟契约依据官方定义构建；未登录 Postman，未执行需要账号的远端 mock 归属检索，也未发布云端资源。日志查询条件以官方工具定义核对，不依赖推测字段。
 
@@ -165,13 +165,13 @@ GOTOOLCHAIN=local go -C backend test ./test/operations \
 ONCALL_INTEGRATION=1 ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true \
 GOTOOLCHAIN=local go test ./test/operations -run '^TestPrometheusIntegration$' -v -count=1
 
-# 先提供有效 MCP URL、入口认证、ONCALL_LOG_REGION、ONCALL_LOG_TOPIC_ID
+# 先在 backend/.env 提供 Tencent SecretId/SecretKey、地域和 TopicId
 # ONCALL_LOG_INTEGRATION_QUERY 可覆盖测试查询，默认 *
 ONCALL_INTEGRATION=1 ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
 GOTOOLCHAIN=local go test ./test/operations -run '^TestLogMCPIntegration$' -v -count=1
 ```
 
-真实 Prometheus 查询、CLS tools/list 和一次真实日志查询：**未执行**。目前仅有 Prometheus 本机默认地址，缺少可用 MCP 地址、地域、主题和凭据，不能使用占位值宣称通过。真实测试仅查询，不写日志；只记录计数与查询时间，不打印业务日志或凭据。
+真实 Prometheus 查询、CLS tools/list 和一次真实日志查询：**未执行**。本机配置已填写 Prometheus 地址并启用告警工具；日志工具保持禁用，Tencent SecretId/SecretKey 尚未配置。真实测试仅查询，不写日志；只记录计数与查询时间，不打印业务日志或凭据。
 
 ## 依赖与协议依据
 

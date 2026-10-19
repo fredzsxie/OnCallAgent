@@ -329,9 +329,9 @@ node --test backend/test/frontend/*.test.mjs
 
 ## 运维工具（第 9 步）
 
-`query_prometheus_alerts` 查询 `/api/v1/alerts`；`query_log` 经 Streamable HTTP 调用 CLS MCP 的 `SearchLog`。两个工具默认关闭，启用后加入 Web 和 CLI 共用的 ChatAgent 工具集合。每个工具默认超时 15 秒，同时遵循更早的 Agent/请求截止时间。
+`query_prometheus_alerts` 查询 `/api/v1/alerts`；`query_log` 由本机 stdio 子进程调用 CLS MCP 的 `SearchLog`。两个工具默认关闭，启用后加入 Web 和 CLI 共用的 ChatAgent 工具集合。每个工具默认超时 15 秒，同时遵循更早的 Agent/请求截止时间。
 
-配置见 `backend/.env.example`，仅在环境中提供认证信息。Prometheus 默认地址为 `http://127.0.0.1:9090`；CLS MCP 需提供真实入口地址，地域和主题可通过配置或调用输入提供。启用后的工具结果会交给当前配置的聊天模型。
+配置见 `backend/.env.example`。Prometheus 默认地址为 `http://127.0.0.1:9090`；CLS MCP 使用固定版本的官方 npm 包，需要在运行后端的机器安装 Node.js/npm，并在本机 `.env` 填入 Tencent SecretId/SecretKey。地域和主题可通过配置或调用输入提供。启用后的工具结果会交给当前配置的聊天模型。
 
 ```bash
 cd OnCallAgent/backend
@@ -342,7 +342,7 @@ GOTOOLCHAIN=local go run ./cmd/tools_cmd --list-tools
 ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true \
   GOTOOLCHAIN=local go run ./cmd/tools_cmd --tool query_prometheus_alerts --input '{}'
 
-# 设置有效 ONCALL_LOG_MCP_URL 和认证后执行
+# 填好 TENCENTCLOUD_SECRET_ID/KEY 后可显式启用日志工具
 ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
   GOTOOLCHAIN=local go run ./cmd/tools_cmd --mcp-tools
 ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
@@ -350,4 +350,4 @@ ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
   --input '{"query":"level:ERROR","region":"ap-guangzhou","topic_id":"实际主题ID","limit":20}'
 ```
 
-本阶段本地 HTTP/MCP、真实 Graph 和 Postman CLI 模拟验收通过；真实 Prometheus、CLS 工具列表与日志查询未执行。新增 MCP SDK 固定为 `github.com/mark3labs/mcp-go v0.42.0`；其依赖要求带来两项间接依赖的最小版本升级，详情及完整配置、错误分类、验收命令见 [第 9 步文档](docs/stage-09.md)。
+本阶段本地 HTTP 与 stdio/MCP、真实 Graph 和 Postman CLI 模拟验收通过；真实 Prometheus 与 CLS 查询未执行。新增 MCP SDK 固定为 `github.com/mark3labs/mcp-go v0.42.0`；其依赖要求带来两项间接依赖的最小版本升级，详情及完整配置、错误分类、验收命令见 [第 9 步文档](docs/stage-09.md)。
