@@ -38,9 +38,11 @@ func (c Retrieval) Validate() error {
 }
 
 type Tools struct {
-	QueryInternalDocsEnabled bool
-	GetCurrentTimeEnabled    bool
-	TimeZone                 string
+	QueryInternalDocsEnabled     bool
+	GetCurrentTimeEnabled        bool
+	QueryPrometheusAlertsEnabled bool
+	QueryLogEnabled              bool
+	TimeZone                     string
 }
 
 func LoadTools() (Tools, error) {
@@ -51,6 +53,12 @@ func LoadTools() (Tools, error) {
 	}
 	if c.GetCurrentTimeEnabled, err = strconv.ParseBool(env("ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED", "true")); err != nil {
 		return c, fmt.Errorf("ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED must be a boolean")
+	}
+	if c.QueryPrometheusAlertsEnabled, err = strconv.ParseBool(env("ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED", "false")); err != nil {
+		return c, fmt.Errorf("ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED must be a boolean")
+	}
+	if c.QueryLogEnabled, err = strconv.ParseBool(env("ONCALL_TOOLS_QUERY_LOG_ENABLED", "false")); err != nil {
+		return c, fmt.Errorf("ONCALL_TOOLS_QUERY_LOG_ENABLED must be a boolean")
 	}
 	return c, c.Validate()
 }
