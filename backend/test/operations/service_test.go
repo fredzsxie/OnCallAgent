@@ -17,7 +17,7 @@ func (f searchFunc) Search(ctx context.Context, r operations.LogRequest) ([]json
 	return f(ctx, r)
 }
 func logConfig() config.LogMCP {
-	return config.LogMCP{HTTP: config.ToolHTTP{URL: "http://localhost/mcp", Timeout: 15 * time.Second, Auth: config.HTTPAuth{Type: "none"}}, Region: "ap-guangzhou", TopicID: "fixture-topic", Lookback: 15 * time.Minute, Limit: 20}
+	return config.LogMCP{Command: "fixture-mcp", Args: []string{"--stdio"}, Timeout: 15 * time.Second, SecretID: "fixture-id", SecretKey: "fixture-key", TimeZone: "Asia/Shanghai", Region: "ap-guangzhou", TopicID: "fixture-topic", Lookback: 15 * time.Minute, Limit: 20}
 }
 
 func TestLogDefaultsOverridesAndTimeConversion(t *testing.T) {

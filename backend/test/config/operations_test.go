@@ -42,10 +42,11 @@ func TestOperationsConfigValidation(t *testing.T) {
 		{"ONCALL_PROMETHEUS_BASE_URL", "https://host?token=private", false}, {"ONCALL_PROMETHEUS_AUTH_TYPE", "header", false},
 		{"ONCALL_LOG_LOOKBACK", "", true}, {"ONCALL_LOG_LOOKBACK", "0s", true}, {"ONCALL_LOG_LOOKBACK", "1ns", true},
 		{"ONCALL_LOG_LIMIT", "", true}, {"ONCALL_LOG_LIMIT", "0", true}, {"ONCALL_LOG_LIMIT", "1001", true},
-		{"ONCALL_LOG_MCP_URL", "", true}, {"ONCALL_LOG_MCP_TIMEOUT", "bad", true},
+		{"ONCALL_LOG_MCP_COMMAND", "", true}, {"ONCALL_LOG_MCP_ARGS_JSON", "bad", true}, {"ONCALL_LOG_MCP_TIMEOUT", "bad", true},
 	} {
 		t.Run(tc.name+tc.value, func(t *testing.T) {
-			t.Setenv("ONCALL_LOG_MCP_URL", "http://localhost:3000/mcp")
+			t.Setenv("TENCENTCLOUD_SECRET_ID", "fixture-id")
+			t.Setenv("TENCENTCLOUD_SECRET_KEY", "fixture-key")
 			t.Setenv(tc.name, tc.value)
 			var err error
 			if tc.log {
@@ -58,6 +59,24 @@ func TestOperationsConfigValidation(t *testing.T) {
 			}
 		})
 	}
+	t.Run("missing credentials", func(t *testing.T) {
+		t.Setenv("TENCENTCLOUD_SECRET_ID", "")
+		t.Setenv("TENCENTCLOUD_SECRET_KEY", "")
+		if _, err := config.LoadLogMCP(); err == nil || strings.Contains(err.Error(), "fixture") {
+			t.Fatal("missing credentials accepted or secret leaked", err)
+		}
+	})
+	t.Run("default command", func(t *testing.T) {
+		t.Setenv("TENCENTCLOUD_SECRET_ID", "fixture-id")
+		t.Setenv("TENCENTCLOUD_SECRET_KEY", "fixture-key")
+		for _, name := range []string{"ONCALL_LOG_MCP_COMMAND", "ONCALL_LOG_MCP_ARGS_JSON", "ONCALL_LOG_MCP_TIMEOUT", "ONCALL_LOG_LOOKBACK", "ONCALL_LOG_LIMIT", "ONCALL_TIME_ZONE"} {
+			unsetEnv(t, name)
+		}
+		cfg, err := config.LoadLogMCP()
+		if err != nil || cfg.Command != "npx" || len(cfg.Args) != 2 || cfg.Args[1] != "cls-mcp-server@1.2.0" || cfg.TimeZone != "Asia/Shanghai" {
+			t.Fatalf("stdio defaults: %+v %v", cfg, err)
+		}
+	})
 	for _, name := range []string{"ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED", "ONCALL_TOOLS_QUERY_LOG_ENABLED"} {
 		for _, value := range []string{"", "yes"} {
 			t.Run(name+value, func(t *testing.T) {
@@ -72,19 +91,18 @@ func TestOperationsConfigValidation(t *testing.T) {
 
 func TestOperationsAuthenticationValidation(t *testing.T) {
 	for _, auth := range []config.HTTPAuth{
-		{Type: "none"}, {Type: "basic", Username: "reader", Password: "fixture-only"}, {Type: "bearer", BearerToken: "fixture-only"}, {Type: "header", HeaderName: "X-API-Key", HeaderValue: "fixture-only"},
+		{Type: "none"}, {Type: "basic", Username: "reader", Password: "fixture-only"}, {Type: "bearer", BearerToken: "fixture-only"},
 	} {
-		if err := auth.Validate(true); err != nil {
+		if err := auth.Validate(); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, auth := range []config.HTTPAuth{
 		{Type: "basic", Username: "reader"}, {Type: "bearer", BearerToken: " "}, {Type: "none", Password: "private"},
 		{Type: "basic", Username: "reader", Password: "private", BearerToken: "private"},
-		{Type: "header", HeaderName: "Accept", HeaderValue: "private"}, {Type: "header", HeaderName: "Mcp-Session-Id", HeaderValue: "private"},
-		{Type: "header", HeaderName: "invalid header", HeaderValue: "private"}, {Type: "header", HeaderName: "X-Key", HeaderValue: "private\nvalue"},
+		{Type: "unknown"},
 	} {
-		if err := auth.Validate(true); err == nil || strings.Contains(err.Error(), "private") {
+		if err := auth.Validate(); err == nil || strings.Contains(err.Error(), "private") {
 			t.Fatal("invalid auth accepted or leaked", err)
 		}
 	}

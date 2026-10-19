@@ -3,5 +3,3 @@ routing: path
 mocks:
   - routeKey: prom
     path: ./prometheus/config.yaml
-  - routeKey: cls
-    path: ./cls/config.yaml

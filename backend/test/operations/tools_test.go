@@ -13,7 +13,7 @@ import (
 )
 
 func TestOperationsToolSchemasStrictInputAndSingleEncoding(t *testing.T) {
-	cfg, _ := mcpFixture(t, mcpOptions{})
+	cfg := stdioConfig()
 	mcp, err := client.NewLogMCP(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,10 @@ func TestOperationsToolSchemasStrictInputAndSingleEncoding(t *testing.T) {
 
 func TestDisabledOperationsNeverLoadOrConnect(t *testing.T) {
 	t.Setenv("ONCALL_PROMETHEUS_BASE_URL", "invalid")
-	t.Setenv("ONCALL_LOG_MCP_URL", "invalid")
+	t.Setenv("ONCALL_LOG_MCP_COMMAND", "")
+	t.Setenv("ONCALL_LOG_MCP_ARGS_JSON", "not-json")
+	t.Setenv("TENCENTCLOUD_SECRET_ID", "")
+	t.Setenv("TENCENTCLOUD_SECRET_KEY", "")
 	t.Setenv("ONCALL_PROMETHEUS_TIMEOUT", "")
 	t.Setenv("ONCALL_LOG_MCP_TIMEOUT", "")
 	connections, err := client.OpenOperations(context.Background(), config.Tools{})

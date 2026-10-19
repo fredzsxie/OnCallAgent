@@ -68,7 +68,7 @@ func TestLogMCPIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	t.Logf("Streamable HTTP initialize and tools/list succeeded; tools=%d; SearchLog schema verified", len(c.Tools()))
+	t.Logf("stdio initialize and tools/list succeeded; tools=%d; SearchLog schema verified", len(c.Tools()))
 	if p.Region == "" || p.TopicID == "" {
 		t.Skip("provide ONCALL_LOG_REGION and ONCALL_LOG_TOPIC_ID for a real query")
 	}
