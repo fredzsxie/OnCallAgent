@@ -49,6 +49,14 @@ func main() {
 				}
 				return
 			}
+			if len(os.Args) > 1 && os.Args[1] == "--ops-log-fail" {
+				result = map[string]any{"isError": true, "content": []any{map[string]string{"type": "text", "text": `{"code":"AuthFailure.SignatureFailure","message":"fixture-private-secret"}`}}}
+				break
+			}
+			if len(os.Args) > 1 && os.Args[1] == "--ops-log" {
+				result = map[string]any{"content": []any{map[string]string{"type": "text", "text": `[{"Time":1792382400000,"Source":"node-a","LogJson":{"level":"ERROR","message":"signature cache expired"}}]`}}}
+				break
+			}
 			record, _ := json.Marshal([]any{map[string]any{
 				"received":            req.Params.Arguments,
 				"has_model_key":       os.Getenv("ONCALL_CHAT_MODEL_API_KEY") != "",
