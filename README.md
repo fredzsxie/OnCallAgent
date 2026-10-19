@@ -1,24 +1,24 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。另提供可选的 Prometheus 告警与 CLS 日志 MCP 工具，默认关闭。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
 ├── main.go                  # 启动时创建并注入共享客户端和服务
-├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd、chat_cmd 独立命令
+├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd、chat_cmd、tools_cmd
 ├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── ai/
 │   │   ├── agent/          # 各 Agent 的 xxx_pipeline 编排与组件适配
 │   │   ├── retriever/      # 复用 Store 的检索组件
-│   │   └── tools/          # 时间、内部文档工具和注册模块
+│   │   └── tools/          # 时间、内部文档、告警、日志工具和注册模块
 │   ├── config/             # 配置读取、环境变量覆盖和校验
 │   ├── controller/         # 接收 HTTP 请求，调用 service
 │   └── service/            # 健康检查、ChatService 和知识库向量服务
 ├── utility/
-│   ├── client/             # 聊天、Ark Embedding 和 Milvus 客户端
+│   ├── client/             # 聊天、Embedding、Milvus、Prometheus 和 CLS MCP 客户端
 │   └── middleware/         # message/data 统一响应及状态码
 └── test/                   # 所有测试文件和本地协议测试
 ```
@@ -326,3 +326,28 @@ node --test backend/test/frontend/*.test.mjs
 ```
 
 文件说明、部署示例见 [前端 README](frontend/README.md)；页面验收清单、本地 Postman 与真实集成命令、实际结果见 [第 8 步文档](docs/stage-08.md)。
+
+## 运维工具（第 9 步）
+
+`query_prometheus_alerts` 查询 `/api/v1/alerts`；`query_log` 经 Streamable HTTP 调用 CLS MCP 的 `SearchLog`。两个工具默认关闭，启用后加入 Web 和 CLI 共用的 ChatAgent 工具集合。每个工具默认超时 15 秒，同时遵循更早的 Agent/请求截止时间。
+
+配置见 `backend/.env.example`，仅在环境中提供认证信息。Prometheus 默认地址为 `http://127.0.0.1:9090`；CLS MCP 需提供真实入口地址，地域和主题可通过配置或调用输入提供。启用后的工具结果会交给当前配置的聊天模型。
+
+```bash
+cd OnCallAgent/backend
+# 离线列出启用工具的输入/输出 Schema，不建立外部连接
+GOTOOLCHAIN=local go run ./cmd/tools_cmd --list-tools
+
+# 使用配置中的地址和认证；独立运维调用无需聊天模型、Embedding 或 Milvus
+ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true \
+  GOTOOLCHAIN=local go run ./cmd/tools_cmd --tool query_prometheus_alerts --input '{}'
+
+# 设置有效 ONCALL_LOG_MCP_URL 和认证后执行
+ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
+  GOTOOLCHAIN=local go run ./cmd/tools_cmd --mcp-tools
+ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
+  GOTOOLCHAIN=local go run ./cmd/tools_cmd --tool query_log \
+  --input '{"query":"level:ERROR","region":"ap-guangzhou","topic_id":"实际主题ID","limit":20}'
+```
+
+本阶段本地 HTTP/MCP、真实 Graph 和 Postman CLI 模拟验收通过；真实 Prometheus、CLS 工具列表与日志查询未执行。新增 MCP SDK 固定为 `github.com/mark3labs/mcp-go v0.42.0`；其依赖要求带来两项间接依赖的最小版本升级，详情及完整配置、错误分类、验收命令见 [第 9 步文档](docs/stage-09.md)。
