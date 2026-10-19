@@ -1,0 +1,10 @@
+version: 1
+name: oncall-cls-mcp
+slug: oncall-cls-mcp
+protocol: http
+port: 4501
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
