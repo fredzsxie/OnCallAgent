@@ -1,0 +1,7 @@
+simulation: oncall-ops-stage10
+routing: path
+mocks:
+  - routeKey: model
+    path: ./model/config.yaml
+  - routeKey: prom
+    path: ../../operations/postman/prometheus/config.yaml

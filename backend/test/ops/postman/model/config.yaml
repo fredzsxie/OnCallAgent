@@ -1,0 +1,10 @@
+version: 1
+name: oncall-ops-model
+slug: oncall-ops-model
+protocol: http
+port: 4501
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
