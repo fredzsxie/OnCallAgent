@@ -1,13 +1,13 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。另提供可选的 Prometheus 告警与 CLS 日志 MCP 工具，默认关闭。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。另提供可选的 Prometheus 告警与 CLS 日志 MCP 工具，以及独立的 Plan/Execute/Replan 运维 Agent。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
 ```text
 backend/
 ├── main.go                  # 启动时创建并注入共享客户端和服务
-├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd、chat_cmd、tools_cmd
+├── cmd/                     # modelcheck、init_knowledge、knowledge_cmd、recall_cmd、chat_cmd、tools_cmd、ai_ops_cmd
 ├── api/{health,chat,upload}/v1/    # 请求和响应定义
 ├── internal/
 │   ├── ai/
@@ -351,3 +351,20 @@ ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
 ```
 
 本阶段本地 HTTP 与 stdio/MCP、真实 Graph 和 Postman CLI 模拟验收通过；真实 Prometheus 与 CLS 查询未执行。新增 MCP SDK 固定为 `github.com/mark3labs/mcp-go v0.42.0`；其依赖要求带来两项间接依赖的最小版本升级，详情及完整配置、错误分类、验收命令见 [第 9 步文档](docs/stage-09.md)。
+
+## 运维 Agent（第 10 步）
+
+独立 CLI 使用 Eino ADK 的 `Planner → Executor → Replanner`：规划模型制订并调整计划，执行模型调用已启用的时间、文档、告警和日志工具。默认最多 8 次执行/重规划循环、每个计划步骤最多 12 次执行模型调用，总预算 180 秒。普通聊天接口保持原行为。
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run ./cmd/ai_ops_cmd \
+  --query '检查当前告警，结合内部手册和日志给出排查报告。' \
+  --events /tmp/oncall-ops-events.jsonl
+```
+
+成功输出 `{"report":"五部分 Markdown 报告","detail":[...]}`；错误输出到 stderr 并退出非零，保留已完成的步骤概要。`--events` 可省略；指定时创建新文件，不覆盖已有记录。单工具失败交给运维 Agent 作为证据限制，总超时、取消、模型失败和执行上限会终止任务。
+
+规划和执行模型可分别配置 `ONCALL_OPS_PLANNER_*`、`ONCALL_OPS_EXECUTOR_*`，未设置字段继承 `ONCALL_CHAT_MODEL_*`，显式空值报错。更慢的模型可通过专用 `TIMEOUT` 调整单次调用预算；总预算仍独立生效。只初始化启用工具需要的依赖，CLS 沿用 stdio MCP，不新增 SDK 依赖。
+
+结构图、完整配置、事件示例、本地模拟命令和真实联调结果见 [第 10 步文档](docs/stage-10.md)。
