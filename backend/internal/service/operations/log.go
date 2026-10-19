@@ -57,7 +57,7 @@ func (s *LogService) Query(ctx context.Context, input *LogInput) (LogResult, err
 	if request.From < 0 || request.From >= request.To {
 		return LogResult{}, Failure(LogTool, ErrInvalidInput)
 	}
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.HTTP.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
 	records, err := s.client.Search(ctx, request)
 	if err != nil {

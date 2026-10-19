@@ -21,7 +21,7 @@ type Prometheus struct {
 }
 
 func NewPrometheus(c config.ToolHTTP) (*Prometheus, error) {
-	if c.Validate(false) != nil {
+	if c.Validate() != nil {
 		return nil, operations.Failure(operations.PrometheusTool, operations.ErrConfiguration)
 	}
 	h, transport := newToolHTTP(c)

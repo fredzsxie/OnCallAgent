@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
+	"io"
+	"os"
+	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +27,6 @@ type MCPToolDefinition struct {
 
 type LogMCP struct {
 	client      *mcpclient.Client
-	transport   *http.Transport
 	timeout     time.Duration
 	definitions []MCPToolDefinition
 	closeOnce   sync.Once
@@ -38,37 +40,45 @@ func (silentMCPLogger) Errorf(string, ...any) {}
 func (silentMCPLogger) Debugf(string, ...any) {}
 
 func NewLogMCP(ctx context.Context, cfg config.LogMCP) (*LogMCP, error) {
-	if cfg.Validate() != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, operations.Failure(operations.LogTool, operations.ErrConfiguration)
 	}
-	h, base := newToolHTTP(cfg.HTTP)
-	cli, err := mcpclient.NewStreamableHttpClient(cfg.HTTP.URL, transport.WithHTTPBasicClient(h), transport.WithHTTPLogger(silentMCPLogger{}))
+	if ctx.Err() != nil {
+		return nil, operations.RequestFailure(ctx, operations.LogTool, ctx.Err())
+	}
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+	childEnv := stdioEnvironment(cfg)
+	cli, err := mcpclient.NewStdioMCPClientWithOptions(cfg.Command, childEnv, cfg.Args,
+		transport.WithCommandFunc(func(ctx context.Context, command string, env []string, args []string) (*exec.Cmd, error) {
+			cmd := exec.CommandContext(ctx, command, args...)
+			cmd.Env = env
+			return cmd, nil
+		}),
+		transport.WithCommandLogger(silentMCPLogger{}),
+	)
 	if err != nil {
-		base.CloseIdleConnections()
 		return nil, operations.Failure(operations.LogTool, operations.ErrConfiguration)
 	}
-	c := &LogMCP{client: cli, transport: base, timeout: cfg.HTTP.Timeout}
+	c := &LogMCP{client: cli, timeout: cfg.Timeout}
+	if stderr, ok := mcpclient.GetStderr(cli); ok {
+		go func() { _, _ = io.Copy(io.Discard, stderr) }()
+	}
 	success := false
 	defer func() {
 		if !success {
 			_ = c.Close()
 		}
 	}()
-	ctx, cancel := context.WithTimeout(ctx, cfg.HTTP.Timeout)
-	defer cancel()
-	ctx, obs := observe(ctx)
-	if err := cli.Start(ctx); err != nil {
-		return nil, mcpFailure(ctx, obs, err)
-	}
 	request := mcp.InitializeRequest{}
 	request.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	request.Params.ClientInfo = mcp.Implementation{Name: "OnCallAgent", Version: "1.0.0"}
 	if _, err := cli.Initialize(ctx, request); err != nil {
-		return nil, mcpFailure(ctx, obs, err)
+		return nil, mcpFailure(ctx, err)
 	}
 	listed, err := cli.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		return nil, mcpFailure(ctx, obs, err)
+		return nil, mcpFailure(ctx, err)
 	}
 	found := false
 	for _, item := range listed.Tools {
@@ -92,6 +102,33 @@ func NewLogMCP(ctx context.Context, cfg config.LogMCP) (*LogMCP, error) {
 	}
 	success = true
 	return c, nil
+}
+
+func stdioEnvironment(cfg config.LogMCP) []string {
+	values := map[string]string{
+		"TRANSPORT":               "stdio",
+		"TENCENTCLOUD_SECRET_ID":  cfg.SecretID,
+		"TENCENTCLOUD_SECRET_KEY": cfg.SecretKey,
+		"TZ":                      cfg.TimeZone,
+	}
+	for _, name := range []string{"PATH", "HOME"} {
+		if value, ok := os.LookupEnv(name); ok {
+			values[name] = value
+		}
+	}
+	if cfg.APIBaseHost != "" {
+		values["TENCENTCLOUD_API_BASE_HOST"] = cfg.APIBaseHost
+	}
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	env := make([]string, 0, len(names))
+	for _, name := range names {
+		env = append(env, name+"="+values[name])
+	}
+	return env
 }
 
 func logSchemaFailure() error {
@@ -137,7 +174,6 @@ func (c *LogMCP) Close() error {
 		if err := c.client.Close(); err != nil {
 			c.closeErr = operations.Failure(operations.LogTool, operations.ErrUpstream)
 		}
-		c.transport.CloseIdleConnections()
 	})
 	return c.closeErr
 }
@@ -145,13 +181,12 @@ func (c *LogMCP) Close() error {
 func (c *LogMCP) Search(ctx context.Context, input operations.LogRequest) ([]json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	ctx, obs := observe(ctx)
 	request := mcp.CallToolRequest{}
 	request.Params.Name = "SearchLog"
 	request.Params.Arguments = map[string]any{"Region": input.Region, "TopicId": input.TopicID, "Query": input.Query, "From": input.From, "To": input.To, "Limit": input.Limit}
 	result, err := c.client.CallTool(ctx, request)
 	if err != nil {
-		return nil, mcpFailure(ctx, obs, err)
+		return nil, mcpFailure(ctx, err)
 	}
 	if ctx.Err() != nil {
 		return nil, operations.RequestFailure(ctx, operations.LogTool, ctx.Err())
@@ -168,7 +203,6 @@ func (c *LogMCP) Search(ctx context.Context, input operations.LogRequest) ([]jso
 		}
 	}
 	if result.IsError {
-		// Recognize structured provider codes; never classify by an arbitrary error message.
 		var failure struct {
 			Code string `json:"code"`
 		}
@@ -203,17 +237,13 @@ func (c *LogMCP) Search(ctx context.Context, input operations.LogRequest) ([]jso
 	return records, nil
 }
 
-func mcpFailure(ctx context.Context, obs *requestObservation, err error) error {
+func mcpFailure(ctx context.Context, err error) error {
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return operations.RequestFailure(ctx, operations.LogTool, err)
 	}
-	status := obs.status.Load()
-	if status == 401 || status == 403 {
-		return operations.Failure(operations.LogTool, operations.ErrAuthentication)
-	}
 	var syntax *json.SyntaxError
 	var shape *json.UnmarshalTypeError
-	if obs.invalid.Load() || errors.As(err, &syntax) || errors.As(err, &shape) {
+	if errors.As(err, &syntax) || errors.As(err, &shape) {
 		return operations.Failure(operations.LogTool, operations.ErrInvalidResponse)
 	}
 	return operations.Failure(operations.LogTool, operations.ErrUpstream)

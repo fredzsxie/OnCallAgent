@@ -30,8 +30,6 @@ func (t *toolTransport) RoundTrip(request *http.Request) (*http.Response, error)
 		copy.SetBasicAuth(t.auth.Username, t.auth.Password)
 	case "bearer":
 		copy.Header.Set("Authorization", "Bearer "+t.auth.BearerToken)
-	case "header":
-		copy.Header.Set(t.auth.HeaderName, t.auth.HeaderValue)
 	}
 	response, err := t.base.RoundTrip(copy)
 	if err != nil {
