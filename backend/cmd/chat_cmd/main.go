@@ -135,7 +135,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	registry, err := tools.NewRegistry(toolsCfg, retriever, time.Now)
+	operations, err := client.OpenOperations(ctx, toolsCfg)
+	if err != nil {
+		return err
+	}
+	defer operations.Close()
+	registry, err := tools.NewRegistry(toolsCfg, tools.Dependencies{Retriever: retriever, Now: time.Now, Prometheus: operations.Prometheus, Logs: operations.Logs})
 	if err != nil {
 		return err
 	}

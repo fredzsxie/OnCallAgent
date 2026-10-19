@@ -41,7 +41,7 @@ func makeRetriever(t *testing.T, b *backend) *retriever.MilvusRetriever {
 
 func TestQueryToolJSONAndDependencyReuse(t *testing.T) {
 	b := &backend{docs: []*schema.Document{(&schema.Document{ID: "one", Content: "Restart the service", MetaData: map[string]any{"source": "guide.md", "title": "Recovery"}}).WithScore(0.8)}}
-	registry, err := tools.NewRegistry(settings(), makeRetriever(t, b), nil)
+	registry, err := tools.NewRegistry(settings(), tools.Dependencies{Retriever: makeRetriever(t, b)})
 	if err != nil || b.calls != 0 {
 		t.Fatal("registry called retriever during construction")
 	}
@@ -116,7 +116,7 @@ func TestRegistrySwitchesAndSchemas(t *testing.T) {
 			if docsEnabled {
 				r = makeRetriever(t, &backend{})
 			}
-			registry, err := tools.NewRegistry(cfg, r, nil)
+			registry, err := tools.NewRegistry(cfg, tools.Dependencies{Retriever: r})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -164,7 +164,7 @@ func TestRegistrySwitchesAndSchemas(t *testing.T) {
 			}
 		}
 	}
-	if _, err := tools.NewRegistry(settings(), nil, nil); err == nil {
+	if _, err := tools.NewRegistry(settings(), tools.Dependencies{}); err == nil {
 		t.Fatal("enabled docs tool accepted missing dependency")
 	}
 }

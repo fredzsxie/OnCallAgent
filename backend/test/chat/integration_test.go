@@ -79,7 +79,7 @@ func TestChatMemoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, TimeZone: "Asia/Shanghai"}, recall, nil)
+	registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, TimeZone: "Asia/Shanghai"}, tools.Dependencies{Retriever: recall})
 	if err != nil {
 		t.Fatal(err)
 	}

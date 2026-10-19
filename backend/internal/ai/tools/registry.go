@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/eino/components/tool/utils"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/operations"
 )
 
 var (
@@ -18,6 +19,13 @@ var (
 )
 
 type Registry struct{ tools map[string]tool.InvokableTool }
+
+type Dependencies struct {
+	Retriever  *retriever.MilvusRetriever
+	Now        func() time.Time
+	Prometheus operations.AlertQuerier
+	Logs       operations.LogQuerier
+}
 
 type Definition struct {
 	Name         string          `json:"name"`
@@ -32,12 +40,16 @@ func Enabled(cfg config.Tools, name string) (bool, error) {
 		return cfg.GetCurrentTimeEnabled, nil
 	case QueryInternalDocs:
 		return cfg.QueryInternalDocsEnabled, nil
+	case QueryPrometheusAlerts:
+		return cfg.QueryPrometheusAlertsEnabled, nil
+	case QueryLog:
+		return cfg.QueryLogEnabled, nil
 	default:
 		return false, ErrUnknownTool
 	}
 }
 
-func NewRegistry(cfg config.Tools, r *retriever.MilvusRetriever, now func() time.Time) (*Registry, error) {
+func NewRegistry(cfg config.Tools, deps Dependencies) (*Registry, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -47,25 +59,39 @@ func NewRegistry(cfg config.Tools, r *retriever.MilvusRetriever, now func() time
 		if err != nil {
 			return nil, err
 		}
-		t, err := NewGetCurrentTimeTool(location, now)
+		t, err := NewGetCurrentTimeTool(location, deps.Now)
 		if err != nil {
 			return nil, err
 		}
 		registry.tools[GetCurrentTime] = t
 	}
 	if cfg.QueryInternalDocsEnabled {
-		t, err := NewQueryInternalDocsTool(r)
+		t, err := NewQueryInternalDocsTool(deps.Retriever)
 		if err != nil {
 			return nil, err
 		}
 		registry.tools[QueryInternalDocs] = t
+	}
+	if cfg.QueryPrometheusAlertsEnabled {
+		t, err := NewPrometheusAlertsQueryTool(deps.Prometheus)
+		if err != nil {
+			return nil, err
+		}
+		registry.tools[QueryPrometheusAlerts] = t
+	}
+	if cfg.QueryLogEnabled {
+		t, err := NewQueryLogTool(deps.Logs)
+		if err != nil {
+			return nil, err
+		}
+		registry.tools[QueryLog] = t
 	}
 	return registry, nil
 }
 
 func (r *Registry) Tools() []tool.BaseTool {
 	result := make([]tool.BaseTool, 0, len(r.tools))
-	for _, name := range []string{GetCurrentTime, QueryInternalDocs} {
+	for _, name := range []string{GetCurrentTime, QueryInternalDocs, QueryPrometheusAlerts, QueryLog} {
 		if t, ok := r.tools[name]; ok {
 			result = append(result, t)
 		}
@@ -77,7 +103,7 @@ func (r *Registry) Invoke(ctx context.Context, name, input string) (string, erro
 	t, ok := r.tools[name]
 	if !ok {
 		switch name {
-		case GetCurrentTime, QueryInternalDocs:
+		case GetCurrentTime, QueryInternalDocs, QueryPrometheusAlerts, QueryLog:
 			return "", ErrDisabledTool
 		default:
 			return "", ErrUnknownTool
@@ -106,7 +132,36 @@ func Definitions(cfg config.Tools) ([]Definition, error) {
 		}
 		result = append(result, d)
 	}
+	if cfg.QueryPrometheusAlertsEnabled {
+		d, err := definition[*PrometheusAlertsInput, operations.AlertsResult](QueryPrometheusAlerts, alertsDescription)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, d)
+	}
+	if cfg.QueryLogEnabled {
+		d, err := definition[*operations.LogInput, operations.LogResult](QueryLog, logDescription)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, d)
+	}
 	return result, nil
+}
+
+func Select(cfg config.Tools, name string) (config.Tools, error) {
+	enabled, err := Enabled(cfg, name)
+	if err != nil {
+		return cfg, err
+	}
+	if !enabled {
+		return cfg, ErrDisabledTool
+	}
+	cfg.GetCurrentTimeEnabled = name == GetCurrentTime
+	cfg.QueryInternalDocsEnabled = name == QueryInternalDocs
+	cfg.QueryPrometheusAlertsEnabled = name == QueryPrometheusAlerts
+	cfg.QueryLogEnabled = name == QueryLog
+	return cfg, nil
 }
 
 func definition[I, O any](name, description string) (Definition, error) {

@@ -120,7 +120,7 @@ func TestChatAgentIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, TimeZone: "Asia/Shanghai"}, r, nil)
+	registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, TimeZone: "Asia/Shanghai"}, tools.Dependencies{Retriever: r})
 	if err != nil {
 		t.Fatal(err)
 	}

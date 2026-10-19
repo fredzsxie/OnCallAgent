@@ -129,7 +129,7 @@ func TestRetrievalIntegration(t *testing.T) {
 				t.Logf("unrelated raw id=%s score=%.6f threshold=0.5", hit.ID, hit.Score)
 			}
 		}
-		registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, TimeZone: "Asia/Shanghai"}, r, nil)
+		registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, TimeZone: "Asia/Shanghai"}, tools.Dependencies{Retriever: r})
 		if err != nil {
 			t.Fatal(err)
 		}

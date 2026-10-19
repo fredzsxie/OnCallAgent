@@ -87,16 +87,10 @@ func run() error {
 			}
 			return json.NewEncoder(os.Stdout).Encode(definitions)
 		}
-		enabled, err := tools.Enabled(toolsCfg, *name)
+		toolsCfg, err = tools.Select(toolsCfg, *name)
 		if err != nil {
 			return err
 		}
-		if !enabled {
-			return tools.ErrDisabledTool
-		}
-		// Build only the selected tool; a time-only invocation needs no cloud credentials.
-		toolsCfg.QueryInternalDocsEnabled = *name == tools.QueryInternalDocs
-		toolsCfg.GetCurrentTimeEnabled = *name == tools.GetCurrentTime
 	}
 	var r *retriever.MilvusRetriever
 	if needsDocs {
@@ -147,7 +141,12 @@ func run() error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(result)
 	}
-	registry, err := tools.NewRegistry(toolsCfg, r, time.Now)
+	operations, err := client.OpenOperations(ctx, toolsCfg)
+	if err != nil {
+		return err
+	}
+	defer operations.Close()
+	registry, err := tools.NewRegistry(toolsCfg, tools.Dependencies{Retriever: r, Now: time.Now, Prometheus: operations.Prometheus, Logs: operations.Logs})
 	if err != nil {
 		return err
 	}

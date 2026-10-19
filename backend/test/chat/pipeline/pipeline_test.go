@@ -77,7 +77,7 @@ func makeRegistry(t *testing.T, base einoretriever.Retriever) *tools.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, TimeZone: "Asia/Shanghai"}, r, func() time.Time { return time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC) })
+	registry, err := tools.NewRegistry(config.Tools{QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, TimeZone: "Asia/Shanghai"}, tools.Dependencies{Retriever: r, Now: func() time.Time { return time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC) }})
 	if err != nil {
 		t.Fatal(err)
 	}
