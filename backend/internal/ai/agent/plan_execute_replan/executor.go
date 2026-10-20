@@ -49,6 +49,26 @@ func toolMiddleware(next compose.InvokableToolEndpoint) compose.InvokableToolEnd
 		if errors.Is(err, context.Canceled) {
 			return nil, context.Canceled
 		}
+		var result map[string]json.RawMessage
+		summary := "tool completed"
+		var counts []int
+		if err == nil {
+			if output == nil || json.Unmarshal([]byte(output.Result), &result) != nil || result == nil {
+				err = operations.ErrInvalidResponse
+			} else {
+				for _, key := range []string{"alerts", "documents", "records"} {
+					if data, ok := result[key]; ok {
+						var values []json.RawMessage
+						if json.Unmarshal(data, &values) != nil || values == nil {
+							err = operations.ErrInvalidResponse
+							break
+						}
+						summary = fmt.Sprintf("%s=%d", key, len(values))
+						counts = []int{len(values)}
+					}
+				}
+			}
+		}
 		if err != nil {
 			if errors.Is(err, retriever.ErrInvalidQuery) {
 				err = operations.ErrInvalidInput
@@ -58,20 +78,7 @@ func toolMiddleware(next compose.InvokableToolEndpoint) compose.InvokableToolEnd
 			data, _ := json.Marshal(map[string]any{"error": failure})
 			return &compose.ToolOutput{Result: string(data)}, nil
 		}
-		if output == nil || !json.Valid([]byte(output.Result)) {
-			return nil, ErrExecution
-		}
-		var result map[string]json.RawMessage
-		_ = json.Unmarshal([]byte(output.Result), &result)
-		summary := "tool completed"
-		for _, key := range []string{"alerts", "documents", "records"} {
-			if data, ok := result[key]; ok {
-				var values []json.RawMessage
-				_ = json.Unmarshal(data, &values)
-				summary = fmt.Sprintf("%s=%d", key, len(values))
-			}
-		}
-		record(ctx, "Executor", "tool", in.Name, "completed", summary)
+		record(ctx, "Executor", "tool", in.Name, "completed", summary, counts...)
 		return output, nil
 	}
 }

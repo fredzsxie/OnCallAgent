@@ -15,6 +15,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/tools"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 )
@@ -31,7 +32,12 @@ func main() {
 		if result != nil {
 			detail = result.Detail
 		}
-		_ = json.NewEncoder(os.Stderr).Encode(map[string]any{"error": map[string]string{"code": pipeline.ErrorCode(err), "message": err.Error()}, "detail": detail})
+		code := pipeline.ErrorCode(err)
+		var failure *aiops.Error
+		if errors.As(err, &failure) {
+			code = failure.Code
+		}
+		_ = json.NewEncoder(os.Stderr).Encode(map[string]any{"error": map[string]string{"code": code, "message": err.Error()}, "detail": detail})
 		os.Exit(1)
 	}
 	if json.NewEncoder(os.Stdout).Encode(result) != nil {
@@ -146,5 +152,9 @@ func run() (*pipeline.Result, error) {
 	if err != nil {
 		return nil, startupError()
 	}
-	return agent.RunWithEvents(ctx, *query, sink)
+	service, err := aiops.New(agent, cfg.Timeout)
+	if err != nil {
+		return nil, startupError()
+	}
+	return service.RunWithEvents(ctx, *query, sink)
 }

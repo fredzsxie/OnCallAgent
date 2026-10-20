@@ -40,6 +40,7 @@ type Event struct {
 	Tool      string `json:"tool,omitempty"`
 	Status    string `json:"status"`
 	Summary   string `json:"summary"`
+	Count     *int   `json:"count,omitempty"`
 }
 
 type Result struct {
@@ -67,7 +68,7 @@ type runState struct {
 
 func state(ctx context.Context) *runState { s, _ := ctx.Value(runKey{}).(*runState); return s }
 
-func record(ctx context.Context, agent, kind, toolName, status, summary string) {
+func record(ctx context.Context, agent, kind, toolName, status, summary string, counts ...int) {
 	s := state(ctx)
 	if s == nil {
 		return
@@ -81,7 +82,11 @@ func record(ctx context.Context, agent, kind, toolName, status, summary string) 
 	if len(runes) > 1024 {
 		summary = string(runes[:1024]) + "…"
 	}
-	e := Event{len(s.events) + 1, s.now().Format(time.RFC3339Nano), s.iteration, agent, kind, toolName, status, summary}
+	e := Event{Sequence: len(s.events) + 1, Timestamp: s.now().Format(time.RFC3339Nano), Iteration: s.iteration, Agent: agent, Type: kind, Tool: toolName, Status: status, Summary: summary}
+	if len(counts) > 0 {
+		count := counts[0]
+		e.Count = &count
+	}
 	s.events = append(s.events, e)
 	if s.sink != nil && s.sink(e) != nil {
 		s.err = ErrEventWrite

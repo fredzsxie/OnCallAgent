@@ -8,12 +8,14 @@ import (
 
 	chatpipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
 	knowledgepipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline"
+	opspipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/tools"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
@@ -105,6 +107,32 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	opsCfg, err := config.LoadOpsAgent()
+	if err != nil {
+		return err
+	}
+	plannerCfg, executorCfg, err := config.LoadOpsModels()
+	if err != nil {
+		return err
+	}
+	planner, err := client.NewOpenAI(ctx, plannerCfg)
+	if err != nil {
+		return err
+	}
+	defer planner.Close()
+	executor, err := client.NewOpenAI(ctx, executorCfg)
+	if err != nil {
+		return err
+	}
+	defer executor.Close()
+	opsAgent, err := opspipeline.BuildOpsAgent(ctx, opsCfg, opspipeline.Dependencies{PlannerModel: planner.ToolCallingModel(), ExecutorModel: executor.ToolCallingModel(), Tools: registry.Tools()})
+	if err != nil {
+		return err
+	}
+	opsService, err := aiops.New(opsAgent, opsCfg.Timeout)
+	if err != nil {
+		return err
+	}
 	chatGraph, err := chatpipeline.BuildChatAgent(ctx, chatpipeline.Config{Agent: agentCfg, TimeZone: toolsCfg.TimeZone}, chatpipeline.Dependencies{Model: model.ToolCallingModel(), Retriever: recall, Tools: registry.Tools()})
 	if err != nil {
 		return err
@@ -143,6 +171,7 @@ func run() error {
 		group.Middleware(middleware.ResponseMiddleware)
 		group.Bind(health.NewV1())
 		group.Bind(chat.NewV1(chatService, streams))
+		group.Bind(chat.NewAIOpsV1(opsService))
 		group.Group("", func(files *ghttp.RouterGroup) {
 			files.Middleware(middleware.UploadBody(knowledgeCfg.MaxUploadBytes))
 			files.Bind(upload.NewV1(knowledgeService))

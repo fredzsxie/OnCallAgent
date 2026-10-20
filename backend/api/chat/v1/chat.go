@@ -1,6 +1,9 @@
 package v1
 
-import "github.com/gogf/gf/v2/frame/g"
+import (
+	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
+	"github.com/gogf/gf/v2/frame/g"
+)
 
 type ChatReq struct {
 	g.Meta   `path:"/chat" method:"post" summary:"普通聊天"`
@@ -18,3 +21,11 @@ type ChatStreamReq struct {
 	Question string `json:"Question" v:"required#Question is required"`
 }
 type ChatStreamRes struct{}
+
+type AIOpsReq struct {
+	g.Meta `path:"/ai_ops" method:"post" summary:"运维分析"`
+}
+type AIOpsRes struct {
+	Result string           `json:"result"`
+	Detail []pipeline.Event `json:"detail"`
+}

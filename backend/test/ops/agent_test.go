@@ -13,6 +13,7 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	einoretriever "github.com/cloudwego/eino/components/retriever"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
@@ -420,6 +421,41 @@ func TestParentDeadlineAndBoundedEventSummaries(t *testing.T) {
 	for _, e := range r.Detail {
 		if len([]rune(e.Summary)) > 1025 {
 			t.Fatal("unbounded summary")
+		}
+	}
+}
+
+type malformedAlerts struct{}
+
+func (malformedAlerts) Info(context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{Name: "query_prometheus_alerts", ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{})}, nil
+}
+func (malformedAlerts) InvokableRun(context.Context, string, ...tool.Option) (string, error) {
+	return `{"alerts":"invalid-array"}`, nil
+}
+
+func TestMalformedToolResultCannotBecomeZeroAlerts(t *testing.T) {
+	ex := &script{fn: func(_ context.Context, in []*schema.Message, _ []*schema.ToolInfo) (*schema.Message, error) {
+		last := in[len(in)-1]
+		if last.Role != schema.Tool {
+			return call("query_prometheus_alerts", map[string]any{}), nil
+		}
+		if !strings.Contains(last.Content, "invalid_response") {
+			t.Error("malformed data was not converted into a safe failure")
+		}
+		return schema.AssistantMessage("Alert evidence is unavailable.", nil), nil
+	}}
+	a, err := pipeline.BuildOpsAgent(context.Background(), cfg(), pipeline.Dependencies{PlannerModel: plannerModel(), ExecutorModel: ex, Tools: []tool.BaseTool{malformedAlerts{}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := a.Run(context.Background(), "inspect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range r.Detail {
+		if e.Type == "tool" && (e.Status != "failed" || e.Count != nil) {
+			t.Fatal("malformed alerts must not have a valid count", e)
 		}
 	}
 }

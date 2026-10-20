@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
+	ops "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
@@ -29,6 +31,17 @@ func ResponseMiddleware(r *ghttp.Request) {
 		return
 	}
 	if err := r.GetError(); err != nil {
+		if r.URL.Path == "/api/ai_ops" {
+			var failure *aiops.Error
+			if !errors.As(err, &failure) {
+				if gerror.Code(err) == gcode.CodeValidationFailed || gerror.Code(err) == gcode.CodeInvalidParameter {
+					err = ops.ErrInvalidInput
+				} else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+					err = aiops.ErrInternal
+				}
+				err = aiops.Wrap(err, nil)
+			}
+		}
 		status, body := ErrorResponse(err)
 		r.Response.WriteHeader(status)
 		r.Response.WriteJson(body)
@@ -39,6 +52,21 @@ func ResponseMiddleware(r *ghttp.Request) {
 
 // Keep public error messages identical before and after the SSE response starts.
 func ErrorResponse(err error) (int, Response) {
+	var failure *aiops.Error
+	if errors.As(err, &failure) {
+		status := http.StatusBadGateway
+		switch {
+		case errors.Is(failure, ops.ErrInvalidInput):
+			status = http.StatusBadRequest
+		case errors.Is(failure, context.Canceled):
+			status = http.StatusRequestTimeout
+		case errors.Is(failure, context.DeadlineExceeded):
+			status = http.StatusGatewayTimeout
+		case errors.Is(failure, aiops.ErrInitialization), errors.Is(failure, aiops.ErrInternal), errors.Is(failure, ops.ErrEventWrite):
+			status = http.StatusInternalServerError
+		}
+		return status, Response{Message: failure.Message, Data: map[string]any{"code": failure.Code, "detail": failure.Detail}}
+	}
 	status := http.StatusInternalServerError
 	message := "internal server error"
 	var data any
