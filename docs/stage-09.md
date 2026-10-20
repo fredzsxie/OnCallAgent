@@ -129,6 +129,7 @@ GOTOOLCHAIN=local go run .
 从仓库根目录执行：
 
 ```bash
+cd OnCallAgent
 GOTOOLCHAIN=local go -C backend test ./...
 GOTOOLCHAIN=local go -C backend test -race ./...
 GOTOOLCHAIN=local go -C backend vet ./...
@@ -143,11 +144,13 @@ node --test backend/test/frontend/*.test.mjs
 Postman 本地模拟另开终端运行：
 
 ```bash
+cd OnCallAgent
 postman simulation run backend/test/operations/postman/stage09.sim.yaml \
   --port 4909 --no-history --output ndjson
 ```
 
 ```bash
+cd OnCallAgent
 ONCALL_OPERATIONS_SIM_URL=http://127.0.0.1:4909 \
 GOTOOLCHAIN=local go -C backend test ./test/operations \
   -run '^TestPostmanOperationsCLI$' -v -count=1
@@ -162,6 +165,7 @@ GOTOOLCHAIN=local go -C backend test ./test/operations \
 在 `backend/` 执行，测试读取 `.env`，保留进程变量优先级：
 
 ```bash
+cd OnCallAgent/backend
 ONCALL_INTEGRATION=1 ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true \
 GOTOOLCHAIN=local go test ./test/operations -run '^TestPrometheusIntegration$' -v -count=1
 

@@ -84,11 +84,13 @@ curl -i --max-time 210 -X POST http://127.0.0.1:6872/api/ai_ops \
 以下命令从仓库根目录在不同终端运行，不使用真实云端凭据：
 
 ```bash
+cd OnCallAgent
 postman simulation run backend/test/frontend/stage11.sim.yaml \
   --port 4911 --no-history --output ndjson
 ```
 
 ```bash
+cd OnCallAgent
 ONCALL_FRONTEND_HELPER_READY=/tmp/oncall-stage11-url \
 ONCALL_CHAT_SIM_BASE_URL=http://127.0.0.1:4911/chat/v1 \
 ONCALL_OPS_SIM_BASE_URL=http://127.0.0.1:4911 \
@@ -97,10 +99,12 @@ GOTOOLCHAIN=local go -C backend test ./test/frontend \
 ```
 
 ```bash
+cd OnCallAgent
 ONCALL_API_ORIGIN="$(cat /tmp/oncall-stage11-url)" ./frontend/start.sh
 ```
 
 ```bash
+cd OnCallAgent
 postman collection run backend/test/frontend/ops.collection.json \
   --env-var base_url=http://127.0.0.1:8080 \
   --env-var helper_url="$(cat /tmp/oncall-stage11-url)"
@@ -134,6 +138,7 @@ curl -sS -X POST "$(cat /tmp/oncall-stage11-url)/__test/ops-scenario" \
 ## 自动与真实验收记录（2026-10-20）
 
 ```bash
+cd OnCallAgent
 node --test backend/test/frontend/*.test.mjs
 GOTOOLCHAIN=local go -C backend test ./...
 GOTOOLCHAIN=local go -C backend test -race ./...
@@ -150,6 +155,7 @@ GOTOOLCHAIN=local go -C backend build ./...
 显式真实 HTTP 验收：先启动使用真实配置的服务，再执行：
 
 ```bash
+cd OnCallAgent
 ONCALL_INTEGRATION=1 ONCALL_AIOPS_INTEGRATION_URL=http://127.0.0.1:6872 \
 GOTOOLCHAIN=local go -C backend test ./test/ops \
   -run '^TestAIOpsHTTPIntegration$' -v -count=1 -timeout 220s

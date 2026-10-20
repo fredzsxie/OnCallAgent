@@ -29,6 +29,8 @@ backend/
 
 ## 配置与启动
 
+以下命令从 `OnCallAgent/` 的父目录开始执行；标注“另一终端”的命令也从该目录开始。
+
 在 `backend/.env` 中填写 `backend/.env.example` 列出的聊天、Embedding 和 Milvus 配置。首次启动前显式初始化集合：
 
 ```bash
@@ -69,6 +71,7 @@ Web 服务和独立模型检查命令都会在读取配置前自动加载 `.env`
 配置好上述环境变量后，无需启动 Web 服务即可执行：
 
 ```bash
+cd OnCallAgent/backend
 GOTOOLCHAIN=local go run ./cmd/modelcheck
 ```
 
@@ -114,6 +117,7 @@ curl -i http://127.0.0.1:6872/api/chat \
 以下命令在 `backend/` 中执行，自动测试不需要真实模型凭据：
 
 ```bash
+cd OnCallAgent/backend
 GOTOOLCHAIN=local go test -timeout 60s ./test/...
 GOTOOLCHAIN=local go test -race -timeout 90s ./test/...
 GOTOOLCHAIN=local go vet ./...
@@ -167,6 +171,7 @@ GOTOOLCHAIN=local go run ./cmd/init_knowledge
 三个独立检查/验收命令已移除，真实服务验证通过显式开启的集成测试完成：
 
 ```bash
+cd OnCallAgent/backend
 # 默认测试仅使用本地 HTTP/gRPC 端点，真实集成测试自动跳过。
 GOTOOLCHAIN=local go test -race -timeout 90s ./test/...
 GOTOOLCHAIN=local go vet ./...
@@ -206,9 +211,10 @@ curl -i -F 'file=@/tmp/oncall-stage04.md;filename=stage04-manual.md' http://127.
 
 成功数据为 `fileName`（安全保存名）、`filePath`（真实绝对路径）、`fileSize`（实际字节数）、`source`、`contentHash`、`chunkCount`。响应仍为 `message/data`。无效或空文档返回 400，超限 413，格式不支持 415；保存失败返回 500，`data={"stage":"save","retryable":true}`；Graph 入库或旧版本清理失败返回 503，超时返回 504，均带 `data={"stage":"ingest","retryable":true}`。请求取消返回 408。错误响应不返回成功文件信息或 chunkCount，底层错误不会回显。
 
-同一来源在单进程内串行处理，不支持多个进程同时更新同一来源。失败期间允许暂时混合新旧片段；全部新批次确认前不会清理旧版本。完整约定与验收说明见 [第 4.2 步](docs/stage-04-2.md)。
+同一来源在单进程内串行处理，不支持多个进程同时更新同一来源。失败期间允许暂时混合新旧片段；全部新批次确认前不会清理旧版本。完整约定与验收说明见 [第 4.2 步](docs/stage-04.md#stage-04-2)。
 
 ```bash
+cd OnCallAgent/backend
 # 显式连接云端，验证上传、重复、更新和分批失败后的重试；保留带标记的验收来源。
 ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test -v -count=1 -timeout 120s \
   ./test/upload -run '^TestUploadIntegration$'
@@ -226,7 +232,7 @@ GOTOOLCHAIN=local go run ./cmd/knowledge_cmd \
   --dev --root ./test/knowledge/pipeline/testdata --dev-port 52538
 ```
 
-普通模式输出 JSON ID 数组后退出；调试模式可不指定文件，图注册后等待 SIGINT/SIGTERM。调试输入为 `{"URI":"runbook.md"}`。图配置见 [Graph Schema](backend/internal/ai/agent/knowledge_index_pipeline/workflow.json)，节点配置、幂等规则和验收结果见 [第 4.1 步](docs/stage-04-1.md)。
+普通模式输出 JSON ID 数组后退出；调试模式可不指定文件，图注册后等待 SIGINT/SIGTERM。调试输入为 `{"URI":"runbook.md"}`。图配置见 [Graph Schema](backend/internal/ai/agent/knowledge_index_pipeline/workflow.json)，节点配置、幂等规则和验收结果见 [第 4.1 步](docs/stage-04.md#stage-04-1)。
 
 ## 知识检索与基础工具
 
@@ -321,6 +327,7 @@ ONCALL_API_ORIGIN=http://127.0.0.1:6872 ONCALL_FRONTEND_PORT=8080 ./start.sh
 默认流式，可切换普通模式；Enter 发送、Shift+Enter 换行，生成中可停止。localStorage 保存的是浏览器展示记录，旧会话恢复原 Id，不能恢复过期或重启丢失的模型上下文；未完成回答有明确标记。上传文件进入共享知识库。
 
 ```bash
+cd OnCallAgent
 # 仓库根目录：默认前端测试不调用云端
 node --test backend/test/frontend/*.test.mjs
 ```

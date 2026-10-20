@@ -108,6 +108,7 @@ GOTOOLCHAIN=local go run ./cmd/ai_ops_cmd --query '检查当前告警并给出�
 仓库根目录：
 
 ```bash
+cd OnCallAgent
 GOTOOLCHAIN=local go -C backend test ./test/ops ./test/config ./test/operations -count=1
 GOTOOLCHAIN=local go -C backend test ./...
 GOTOOLCHAIN=local go -C backend test -race ./...
@@ -121,11 +122,13 @@ node --test backend/test/frontend/*.test.mjs
 Postman 模拟分别在两个终端启动与验收：
 
 ```bash
+cd OnCallAgent
 postman simulation run backend/test/ops/postman/stage10.sim.yaml \
   --port 4910 --no-history --output ndjson
 ```
 
 ```bash
+cd OnCallAgent
 ONCALL_OPS_SIM_URL=http://127.0.0.1:4910 \
 GOTOOLCHAIN=local go -C backend test ./test/ops \
   -run '^TestPostmanOpsCLI$' -v -count=1
@@ -138,6 +141,7 @@ GOTOOLCHAIN=local go -C backend test ./test/ops \
 在 backend 目录执行，沿用已有环境配置：
 
 ```bash
+cd OnCallAgent/backend
 ONCALL_INTEGRATION=1 GOTOOLCHAIN=local go test ./test/operations \
   -run '^(TestPrometheusIntegration|TestLogMCPIntegration)$' -v -count=1
 

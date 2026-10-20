@@ -48,11 +48,13 @@ GOTOOLCHAIN=local go -C backend build ./...
 下面三个终端命令从仓库根目录运行：
 
 ```bash
+cd OnCallAgent
 postman simulation run backend/test/chat/postman/stage07.sim.yaml \
   --port 4907 --no-history --output ndjson
 ```
 
 ```bash
+cd OnCallAgent
 ONCALL_FRONTEND_HELPER_READY=/tmp/oncall-stage08-url \
 ONCALL_CHAT_SIM_BASE_URL=http://127.0.0.1:4907/model/v1 \
 GOTOOLCHAIN=local go -C backend test ./test/frontend \
@@ -60,12 +62,14 @@ GOTOOLCHAIN=local go -C backend test ./test/frontend \
 ```
 
 ```bash
+cd OnCallAgent
 ONCALL_API_ORIGIN="$(cat /tmp/oncall-stage08-url)" ./frontend/start.sh
 ```
 
 随后在第四个终端验收：
 
 ```bash
+cd OnCallAgent
 postman collection run backend/test/frontend/collection.json \
   --env-var base_url=http://127.0.0.1:8080 \
   --env-var upload_file=backend/test/frontend/runbook.md
@@ -80,7 +84,8 @@ postman collection run backend/test/frontend/collection.json \
 使用独立集合，先显式初始化，再启动真实服务和另一前端代理。以下集合名为本次保留记录；下次验收可更换新的 `stage08_acceptance_` 名称：
 
 ```bash
-# backend 目录：初始化独立集合
+# 第一终端：后端
+cd OnCallAgent/backend
 ONCALL_MILVUS_COLLECTION=stage08_acceptance_20261016_1910 \
 GOTOOLCHAIN=local go run ./cmd/init_knowledge
 
@@ -91,10 +96,12 @@ ONCALL_CHAT_MODEL_TIMEOUT=60s \
 ONCALL_FILE_DIR=/tmp/oncall-stage08-knowledge \
 GOTOOLCHAIN=local go run .
 
-# 仓库根目录：另一终端
+# 第二终端：前端
+cd OnCallAgent
 ONCALL_API_ORIGIN=http://127.0.0.1:6873 ONCALL_FRONTEND_PORT=8081 ./frontend/start.sh
 
-# 仓库根目录：显式真实验收
+# 第三终端：显式真实验收
+cd OnCallAgent
 ONCALL_INTEGRATION=1 ONCALL_FRONTEND_INTEGRATION_URL=http://127.0.0.1:8081 \
   node --test backend/test/frontend/integration.test.mjs
 ```

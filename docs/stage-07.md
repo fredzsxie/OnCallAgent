@@ -122,11 +122,13 @@ ONCALL_INTEGRATION=1 ONCALL_CHAT_MODEL_TIMEOUT=60s GOTOOLCHAIN=local \
 以下命令分别在三个终端执行，工作目录均为 backend：
 
 ```bash
+cd OnCallAgent/backend
 postman simulation run test/chat/postman/stage07.sim.yaml \
   --port 4907 --no-history --output ndjson
 ```
 
 ```bash
+cd OnCallAgent/backend
 ONCALL_CHAT_HELPER_READY=/tmp/oncall-stage07-url \
 ONCALL_CHAT_SIM_BASE_URL=http://127.0.0.1:4907/model/v1 \
 GOTOOLCHAIN=local go test ./test/chat -run '^TestPostmanServerHelper$' \
@@ -134,6 +136,7 @@ GOTOOLCHAIN=local go test ./test/chat -run '^TestPostmanServerHelper$' \
 ```
 
 ```bash
+cd OnCallAgent/backend
 postman collection run test/chat/postman/collection.json \
   --env-var "base_url=$(cat /tmp/oncall-stage07-url)"
 ```

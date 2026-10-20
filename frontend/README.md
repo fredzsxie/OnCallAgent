@@ -83,6 +83,7 @@ server {
 从仓库根目录运行：
 
 ```bash
+cd OnCallAgent
 node --test backend/test/frontend/*.test.mjs
 GOTOOLCHAIN=local go -C backend test ./...
 GOTOOLCHAIN=local go -C backend test -race ./...

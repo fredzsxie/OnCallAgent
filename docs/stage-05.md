@@ -133,6 +133,7 @@ d589afede1f9869e205817b33d4bea1c8dcd71e558604942304481ab684e157f  恢复认证
 上述实际 CLI 可通过进程环境指定该验收集合复现，例如：
 
 ```bash
+cd OnCallAgent/backend
 ONCALL_MILVUS_COLLECTION=stage05_acceptance_7806ad0abc810a1ebfe6cfe0664dfee4 \
 GOTOOLCHAIN=local go run ./cmd/recall_cmd \
   --query 'AuroraAuth 密钥轮转后令牌签名校验失败，应该怎么恢复，并如何确认认证已经恢复？'
