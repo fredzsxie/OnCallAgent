@@ -21,7 +21,7 @@ cd OnCallAgent/frontend
 ONCALL_API_ORIGIN=http://127.0.0.1:6872 ONCALL_FRONTEND_PORT=8080 ./start.sh
 ```
 
-脚本可以从任意工作目录调用。开发服务只监听 127.0.0.1，只提供明确列出的页面资源，并把 `/api` 代理到启动时指定的 HTTP(S) origin。API origin 不包含 `/api`、账号密码、query 或 fragment。上传和 SSE 双向透传，不缓存完整响应；客户端断开会关闭上游。代理空闲超时 120 秒，连接错误返回安全 JSON。
+脚本可以从任意工作目录调用。开发服务只监听 127.0.0.1，只提供明确列出的页面资源，并把 `/api` 代理到启动时指定的 HTTP(S) origin。API origin 不包含 `/api`、账号密码、query 或 fragment。上传和 SSE 双向透传，不缓存完整响应；客户端断开会关闭上游。代理空闲超时默认 210 秒，可设置正整数 `ONCALL_API_PROXY_TIMEOUT_MS`，连接错误返回安全 JSON。代理预算应长于后端 `ONCALL_OPS_TIMEOUT`（默认 180 秒）。
 
 页面始终请求同源 `/api`，无需给后端增加 CORS。不要用 file:// 直接打开页面，也不要用只提供静态文件且没有 API 代理的服务器联调。
 
@@ -33,6 +33,8 @@ ONCALL_API_ORIGIN=http://127.0.0.1:6872 ONCALL_FRONTEND_PORT=8080 ./start.sh
 - 上传使用 `POST /api/upload` 的 multipart 字段 `file`；支持 txt、md、markdown，默认前端限制 10 MiB。可修改公开的 `config.js` 中 `uploadMaxBytes` 与服务端限制配合，服务端始终做最终校验。此文件不能放密钥。
 - 上传成功展示实际保存文件名、实际字节数、来源和片段数；文件进入共享知识库，不是某会话专有的附件。上传期间先等待入库完成再提问。
 - 会话列表仅为浏览器展示记录。新建会话生成新 Id，恢复旧记录沿用原 Id，不将本地消息重新发送给模型。
+- 导航切换到 AI Ops 后，一键调用 `POST /api/ai_ops`，请求为 `{}`。报告使用现有安全 Markdown 渲染，步骤详情为纯文本；工具 count=0 才能确认该次查询没有活动告警。工具失败或未查询告警时提示证据限制，不能当作系统健康。
+- 分析时显示计时，不展示伪造进度；禁用提交、聊天、上传和切换，取消后立即恢复。失败保留部分概要，可以手动重试；无自动重试。切换面板保留当前报告，刷新后清空，不写入 localStorage 或后端会话。
 
 localStorage 使用版本化键 `oncallagent.history.v1`，保存会话、标题、正文、完成状态和最近成功时间；刷新前未完成的消息恢复为“未完成”。存储损坏、被禁用或容量不足时提示并降级为当前页面内使用，后续保存可能覆盖损坏数据。清除记录需确认，只清理当前浏览器，不清除后端记忆或知识文件。不同浏览器、不同 origin 的记录不共享；本阶段不做多标签页记录合并。
 
@@ -68,13 +70,13 @@ server {
         proxy_set_header Connection "";
         proxy_buffering off;
         proxy_cache off;
-        proxy_read_timeout 120s;
-        proxy_send_timeout 120s;
+        proxy_read_timeout 210s;
+        proxy_send_timeout 210s;
     }
 }
 ```
 
-部署时使用 HTTPS，并按后端上传配置同步调整代理大小和超时。静态部署仅复制 index.html、styles.css、app.js、config.js、四个前端模块及 vendor 运行库，许可证可随包附带；不要复制仓库或 backend/.env。部署示例本次未在外部服务器执行。
+部署时使用 HTTPS，并按后端上传配置同步调整代理大小和超时。静态部署仅复制 index.html、styles.css、app.js、config.js、api.mjs、sse.mjs、history.mjs、render.mjs、aiops.mjs 及 vendor 运行库，许可证可随包附带；不要复制仓库或 backend/.env。自定义后端运维总预算时同步提高代理 read timeout。部署示例本次未在外部服务器执行。
 
 ## 验收
 

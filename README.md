@@ -368,3 +368,24 @@ GOTOOLCHAIN=local go run ./cmd/ai_ops_cmd \
 规划和执行模型可分别配置 `ONCALL_OPS_PLANNER_*`、`ONCALL_OPS_EXECUTOR_*`，未设置字段继承 `ONCALL_CHAT_MODEL_*`，显式空值报错。更慢的模型可通过专用 `TIMEOUT` 调整单次调用预算；总预算仍独立生效。只初始化启用工具需要的依赖，CLS 沿用 stdio MCP，不新增 SDK 依赖。
 
 结构图、完整配置、事件示例、本地模拟命令和真实联调结果见 [第 10 步文档](docs/stage-10.md)。
+
+## 运维接口与报告页面（第 11 步）
+
+启动后端和前端后，在导航选择 **AI Ops**，点击“开始分析”。页面独立展示运行状态、五部分报告和折叠的步骤概要；运行时禁止重复提交，并可取消。报告仅保留在当前页面，不进入聊天记忆或浏览器历史。
+
+```bash
+cd OnCallAgent/backend
+GOTOOLCHAIN=local go run .
+
+# 另一终端
+cd OnCallAgent/frontend
+./start.sh
+
+# 接口验收：固定任务，不接收聊天 Id/Question
+curl -i --max-time 210 -X POST http://127.0.0.1:6872/api/ai_ops \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+成功返回 `{"message":"OK","data":{"result":"Markdown 报告","detail":[...]}}`。CLI 和 HTTP 共用 AIOpsService、运维配置及同一执行流程；Web 在启动时构造共享客户端和 Agent。工具失败后仍有有效报告时返回 200 并展示证据限制；执行失败返回 502，超时返回 504，错误 data 保留安全 code 和部分 detail。无告警只根据最新有效告警工具事件的数值 count=0 判断，不等于系统健康。
+
+开发代理默认预算为 210 秒，可用 `ONCALL_API_PROXY_TIMEOUT_MS` 调整，须长于后端运维总预算。完整契约、本地 Postman 与浏览器清单、真实联调状态见 [第 11 步文档](docs/stage-11.md)。
