@@ -1,0 +1,417 @@
+{
+  "info": {
+    "name": "OnCallAgent AI Ops HTTP acceptance",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8080"
+    },
+    {
+      "key": "helper_url",
+      "value": "http://127.0.0.1:6872"
+    }
+  ],
+  "item": [
+    {
+      "name": "Select normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"normal\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analyze normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b=pm.response.json();",
+              "pm.test(\"report envelope\",()=>{pm.response.to.have.status(200);pm.expect(b.message).to.eql(\"OK\");pm.expect(b.data.result).to.be.a(\"string\").and.not.empty;pm.expect(b.data.detail).to.be.an(\"array\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select empty",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"empty\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analyze empty",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b=pm.response.json();",
+              "pm.test(\"report envelope\",()=>{pm.response.to.have.status(200);pm.expect(b.message).to.eql(\"OK\");pm.expect(b.data.result).to.be.a(\"string\").and.not.empty;pm.expect(b.data.detail).to.be.an(\"array\");});",
+              "pm.test(\"typed empty alerts\",()=>{const e=b.data.detail.filter(e=>e.tool===\"query_prometheus_alerts\").at(-1);pm.expect(e.status).to.eql(\"completed\");pm.expect(e.count).to.eql(0);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select limited",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"limited\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analyze limited",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b=pm.response.json();",
+              "pm.test(\"report envelope\",()=>{pm.response.to.have.status(200);pm.expect(b.message).to.eql(\"OK\");pm.expect(b.data.result).to.be.a(\"string\").and.not.empty;pm.expect(b.data.detail).to.be.an(\"array\");});",
+              "pm.test(\"tool failure retained\",()=>{pm.expect(b.data.detail.some(e=>e.tool===\"query_log\"&&e.status===\"failed\")).to.eql(true);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"failure\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analyze failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"safe execution_failed\",()=>{pm.response.to.have.status(502);const b=pm.response.json();pm.expect(b.data.code).to.eql(\"execution_failed\");pm.expect(b.data.detail).to.be.an(\"array\");pm.expect(b.data).not.to.have.property(\"result\");pm.expect(pm.response.text()).not.to.include(\"fixture-private-secret\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select timeout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"timeout\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analyze timeout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"safe timeout\",()=>{pm.response.to.have.status(504);const b=pm.response.json();pm.expect(b.data.code).to.eql(\"timeout\");pm.expect(b.data.detail).to.be.an(\"array\");pm.expect(b.data).not.to.have.property(\"result\");pm.expect(pm.response.text()).not.to.include(\"fixture-private-secret\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select unsafe",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"unsafe\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analyze unsafe",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b=pm.response.json();",
+              "pm.test(\"report envelope\",()=>{pm.response.to.have.status(200);pm.expect(b.message).to.eql(\"OK\");pm.expect(b.data.result).to.be.a(\"string\").and.not.empty;pm.expect(b.data.detail).to.be.an(\"array\");});",
+              "pm.test(\"markdown fixture reached actual pipeline\",()=>{pm.expect(b.data.result).to.include(\"window.__opsXss\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject malformed body",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops",
+        "body": {
+          "mode": "raw",
+          "raw": "{"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"malformed request\",()=>{pm.response.to.have.status(400);pm.expect(pm.response.json().data.code).to.eql(\"invalid_input\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reset normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\":\"normal\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"reset\",()=>{pm.response.to.have.status(200);});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

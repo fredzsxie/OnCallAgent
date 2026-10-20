@@ -85,9 +85,13 @@ func TestFrontendServerHelper(t *testing.T) {
 	server.SetAccessLogEnabled(false)
 	server.SetErrorLogEnabled(false)
 	server.SetClientMaxBodySize(max + middleware.MultipartOverhead)
+	opsService := addOpsFixture(t, ctx, server, store)
 	server.Group("/api", func(group *ghttp.RouterGroup) {
 		group.Middleware(middleware.ResponseMiddleware)
 		group.Bind(chatcontroller.NewV1(chat, streams))
+		if opsService != nil {
+			group.Bind(chatcontroller.NewAIOpsV1(opsService))
+		}
 		group.Group("", func(files *ghttp.RouterGroup) {
 			files.Middleware(middleware.UploadBody(max))
 			files.Bind(upload.NewV1(knowledge))
