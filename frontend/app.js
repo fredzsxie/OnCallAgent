@@ -1,5 +1,6 @@
 import {chat, upload, validateFile, formatBytes} from './api.mjs';
 import {loadHistory, saveHistory, newSession, newID} from './history.mjs';
+import {OpsTask, opsOutcome} from './aiops.mjs';
 import {renderAnswer} from './render.mjs';
 
 const $ = id => document.getElementById(id);
@@ -9,6 +10,9 @@ try { storage = window.localStorage; } catch { storage = {getItem() {throw new E
 const state = loadHistory(storage, warn);
 let active = state.sessions.find(s => s.id === state.activeId);
 let operation = null;
+let currentView = 'chat';
+let opsTimer;
+const opsTask = new OpsTask({onChange: renderOps});
 const configuredMax = window.ONCALL_CONFIG?.uploadMaxBytes;
 const uploadMax = Number.isSafeInteger(configuredMax) && configuredMax > 0 ? configuredMax : 10485760;
 const nodes = new Map();
@@ -20,6 +24,7 @@ const contextHint = () => { $('context-warning').hidden = !active.messages.lengt
 
 function newChat() {
   if (operation) return;
+  showView('chat');
   active = newSession();
   state.sessions.unshift(active);
   state.activeId = active.id;
@@ -47,6 +52,7 @@ function renderSessions() {
     button.append(title, date);
     button.addEventListener('click', () => {
       if (operation) return;
+      showView('chat');
       active = session; state.activeId = session.id;
       $('question').value = ''; $('upload-status').hidden = true;
       contextHint(); persist(); renderConversation(); closeMenu();
@@ -91,7 +97,7 @@ function updateMessage(message) {
 
 function renderConversation() {
   nodes.clear(); $('messages').replaceChildren();
-  $('conversation-title').textContent = active.title;
+  $('conversation-title').textContent = currentView === 'chat' ? active.title : '运维分析';
   $('welcome').hidden = active.messages.length > 0;
   for (const message of active.messages) $('messages').append(messageNode(message));
   renderSessions(); scrollBottom(); setBusy();
@@ -99,11 +105,13 @@ function renderConversation() {
 
 function setBusy() {
   const busy = !!operation;
-  for (const id of ['new-chat', 'clear-history', 'send', 'upload', 'mode', 'question']) $(id).disabled = busy;
+  for (const id of ['new-chat', 'clear-history', 'send', 'upload', 'mode', 'question', 'view-chat', 'view-ops', 'ops-run']) $(id).disabled = busy;
   $('send').hidden = busy;
   $('stop').hidden = !busy || operation.kind !== 'chat';
   if (!busy) $('activity').textContent = '准备就绪';
   $('composer').setAttribute('aria-busy', String(busy));
+  $('ops-view').setAttribute('aria-busy', String(operation?.kind === 'ops'));
+  $('ops-cancel').hidden = operation?.kind !== 'ops';
   renderSessions();
   for (const view of nodes.values()) view.retry.disabled = busy;
   for (const button of document.querySelectorAll('[data-question]')) button.disabled = busy;
@@ -215,10 +223,60 @@ $('transcript').addEventListener('click', closeMenu);
 $('transcript').addEventListener('scroll', () => { $('jump-bottom').hidden = nearBottom(); });
 $('jump-bottom').addEventListener('click', scrollBottom);
 for (const button of document.querySelectorAll('[data-question]')) button.addEventListener('click', () => { $('question').value = button.dataset.question; $('question').focus(); });
-window.addEventListener('pagehide', () => { operation?.controller.abort(); persist(); });
+window.addEventListener('pagehide', () => { operation?.controller?.abort(); opsTask.cancel(); persist(); });
 window.addEventListener('pageshow', event => {
   if (event.persisted && operation?.kind === 'chat') stop();
 });
 window.addEventListener('focus', () => { if (active?.lastSuccessAt && Date.now() - active.lastSuccessAt >= 30 * 60 * 1000) contextHint(); });
 if (active) { contextHint(); renderConversation(); persist(); }
 else newChat();
+
+function showView(view) {
+  if (operation) return;
+  currentView = view;
+  $('chat-view').hidden = view !== 'chat'; $('ops-view').hidden = view !== 'ops';
+  $('workspace-label').textContent = view === 'chat' ? 'OnCallAgent / 工作会话' : 'OnCallAgent / AI Ops';
+  $('conversation-title').textContent = view === 'chat' ? active?.title || '新会话' : '运维分析';
+  $('mode-label').hidden = view !== 'chat';
+  for (const name of ['chat', 'ops']) {
+    $(`view-${name}`).classList.toggle('selected', view === name);
+    $(`view-${name}`).setAttribute('aria-pressed', String(view === name));
+  }
+  closeMenu();
+}
+
+function renderOps(value) {
+  clearInterval(opsTimer);
+  if (value.status !== 'running' && operation?.kind === 'ops') { operation = null; setBusy(); }
+  $('ops-status').className = `ops-status ${value.status}`;
+  const outcome = opsOutcome(value.detail);
+  const labels = {running: '正在分析', completed: outcome.limited ? '分析完成，存在证据限制' : '分析完成', cancelled: '已取消分析', failed: value.code === 'timeout' ? '分析超时' : ['plan_limit', 'executor_limit'].includes(value.code) ? '达到执行上限' : '分析依赖或执行失败'};
+  $('ops-status-text').textContent = labels[value.status] || '准备就绪';
+  const failureMessages = {timeout: '分析未在执行预算内完成。可以检查模型响应时间后手动重试。', execution_failed: '模型或依赖服务未能完成分析。请检查服务连接后手动重试。', plan_limit: '已达到计划迭代上限，未生成有效报告。', executor_limit: '已达到单步执行上限，未生成有效报告。', invalid_report: '未获得完整报告，请查看已完成的步骤。'};
+  const failureMessage = failureMessages[value.code] || value.message;
+  $('ops-notice').textContent = value.status === 'completed' ? `${outcome.noAlerts ? '未发现活动告警。无告警不代表系统健康。' : outcome.alertsKnown ? '已获取告警结果，请结合证据阅读报告。' : '未获得有效告警查询结果，不能据此判断无告警。'}${outcome.limited ? ' 部分证据缺失或工具失败，请查看报告中的未确认事项。' : ''}` : failureMessage || '正在查询已启用的工具并生成报告，请等待。当前不展示实时节点进度。';
+  $('ops-report').hidden = !value.result;
+  if (value.result) renderAnswer($('ops-report'), value.result); else $('ops-report').replaceChildren();
+  $('ops-empty').hidden = value.status !== 'idle';
+  $('ops-details').hidden = !value.detail.length;
+  $('ops-details').open = false;
+  $('ops-detail-count').textContent = `${value.detail.length} 条`;
+  $('ops-detail-list').replaceChildren();
+  for (const entry of value.detail) {
+    const item = document.createElement('li'), label = document.createElement('strong');
+    const agents = {Planner: '规划', Executor: '执行', Replanner: '调整计划', Runner: '流程'};
+    const statuses = {started: '开始', completed: '完成', failed: '失败'};
+    label.textContent = `${entry.sequence} · ${entry.iteration ? '第 ' + entry.iteration + ' 轮' : '初始计划'} · ${agents[entry.agent] || entry.agent}${entry.tool ? ' / ' + entry.tool : ''} · ${statuses[entry.status] || entry.status}`;
+    item.append(label, document.createTextNode(entry.summary)); $('ops-detail-list').append(item);
+  }
+  const elapsed = () => { $('ops-elapsed').textContent = `已用 ${Math.max(0, Math.floor(((value.finishedAt ?? Date.now()) - value.startedAt) / 1000))} 秒`; };
+  $('ops-elapsed').hidden = value.startedAt === null;
+  elapsed(); if (value.status === 'running') opsTimer = setInterval(elapsed, 1000);
+}
+$('view-chat').addEventListener('click', () => showView('chat'));
+$('view-ops').addEventListener('click', () => { showView('ops'); if (!operation) $('ops-run').focus(); });
+$('ops-run').addEventListener('click', () => {
+  if (operation) return;
+  operation = {kind: 'ops'}; setBusy(); void opsTask.start();
+});
+$('ops-cancel').addEventListener('click', () => { opsTask.cancel(); $('ops-run').focus(); });

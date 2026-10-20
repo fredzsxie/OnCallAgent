@@ -66,3 +66,11 @@ test('unreachable API returns safe JSON and origins reject credentials or paths'
   assert.equal(response.status, 502); assert.deepEqual(await response.json(), {message: 'API connection failed', data: null});
   for (const origin of ['file:///tmp', 'http://user:secret@localhost', 'http://localhost/v1', 'http://localhost?key=secret']) assert.throws(() => createFrontendServer({apiOrigin: origin}));
 });
+
+test('proxy budget is configurable and an ops timeout returns safe JSON', async t => {
+  for (const value of [0, -1, '', NaN, Infinity]) assert.throws(() => createFrontendServer({apiProxyTimeoutMs: value}));
+  const target = await listen(http.createServer((req, res) => {req.resume();}), t);
+  const url = await listen(createFrontendServer({apiOrigin: target, apiProxyTimeoutMs: 30}), t);
+  const response = await fetch(url + '/api/ai_ops', {method: 'POST', body: '{}'});
+  assert.equal(response.status, 504); assert.deepEqual(await response.json(), {message: 'API proxy timed out', data: null});
+});

@@ -5,7 +5,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const files = new Set(['index.html', 'styles.css', 'app.js', 'config.js', 'api.mjs', 'sse.mjs', 'history.mjs', 'render.mjs', 'vendor/marked-18.1.1.umd.js', 'vendor/purify-3.4.17.min.js']);
+const files = new Set(['index.html', 'styles.css', 'app.js', 'config.js', 'api.mjs', 'sse.mjs', 'history.mjs', 'render.mjs', 'aiops.mjs', 'vendor/marked-18.1.1.umd.js', 'vendor/purify-3.4.17.min.js']);
 const types = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8'};
 const hopHeaders = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
 
@@ -22,7 +22,8 @@ function sendError(res, status, message) {
   res.end(JSON.stringify({message, data: null}));
 }
 
-export function createFrontendServer({apiOrigin = 'http://127.0.0.1:6872'} = {}) {
+export function createFrontendServer({apiOrigin = 'http://127.0.0.1:6872', apiProxyTimeoutMs = 210000} = {}) {
+  if (!Number.isSafeInteger(apiProxyTimeoutMs) || apiProxyTimeoutMs <= 0) throw new Error('ONCALL_API_PROXY_TIMEOUT_MS must be a positive integer');
   const target = new URL(apiOrigin);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash || target.pathname !== '/') {
     throw new Error('ONCALL_API_ORIGIN must be an http(s) origin without path, credentials, query or fragment');
@@ -45,7 +46,7 @@ export function createFrontendServer({apiOrigin = 'http://127.0.0.1:6872'} = {})
         incoming.on('close', () => { if (!incoming.complete) res.destroy(); });
         incoming.pipe(res);
       });
-      upstream.setTimeout(120000, () => { sendError(res, 504, 'API proxy timed out'); upstream.destroy(); });
+      upstream.setTimeout(apiProxyTimeoutMs, () => { sendError(res, 504, 'API proxy timed out'); upstream.destroy(); });
       upstream.on('error', () => sendError(res, 502, 'API connection failed'));
       req.on('aborted', () => upstream.destroy());
       req.on('error', () => upstream.destroy());
@@ -70,7 +71,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   try {
     const value = process.env.ONCALL_FRONTEND_PORT ?? '8080';
     if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535) throw new Error('ONCALL_FRONTEND_PORT must be between 1 and 65535');
-    const server = createFrontendServer({apiOrigin: process.env.ONCALL_API_ORIGIN ?? 'http://127.0.0.1:6872'});
+    const timeoutValue = process.env.ONCALL_API_PROXY_TIMEOUT_MS ?? '210000';
+    if (!/^\d+$/.test(timeoutValue)) throw new Error('ONCALL_API_PROXY_TIMEOUT_MS must be a positive integer');
+    const server = createFrontendServer({apiOrigin: process.env.ONCALL_API_ORIGIN ?? 'http://127.0.0.1:6872', apiProxyTimeoutMs: Number(timeoutValue)});
     server.on('error', err => { console.error(`Frontend server failed: ${err.code || 'initialization error'}`); process.exitCode = 1; });
     server.listen(Number(value), '127.0.0.1', () => console.log(`OnCallAgent: http://127.0.0.1:${value}`));
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
