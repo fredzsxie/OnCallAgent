@@ -24,7 +24,6 @@ type Dependencies struct {
 	Retriever  *retriever.MilvusRetriever
 	Now        func() time.Time
 	Prometheus operations.AlertQuerier
-	Logs       operations.LogQuerier
 }
 
 type Definition struct {
@@ -42,8 +41,6 @@ func Enabled(cfg config.Tools, name string) (bool, error) {
 		return cfg.QueryInternalDocsEnabled, nil
 	case QueryPrometheusAlerts:
 		return cfg.QueryPrometheusAlertsEnabled, nil
-	case QueryLog:
-		return cfg.QueryLogEnabled, nil
 	default:
 		return false, ErrUnknownTool
 	}
@@ -79,19 +76,12 @@ func NewRegistry(cfg config.Tools, deps Dependencies) (*Registry, error) {
 		}
 		registry.tools[QueryPrometheusAlerts] = t
 	}
-	if cfg.QueryLogEnabled {
-		t, err := NewQueryLogTool(deps.Logs)
-		if err != nil {
-			return nil, err
-		}
-		registry.tools[QueryLog] = t
-	}
 	return registry, nil
 }
 
 func (r *Registry) Tools() []tool.BaseTool {
 	result := make([]tool.BaseTool, 0, len(r.tools))
-	for _, name := range []string{GetCurrentTime, QueryInternalDocs, QueryPrometheusAlerts, QueryLog} {
+	for _, name := range []string{GetCurrentTime, QueryInternalDocs, QueryPrometheusAlerts} {
 		if t, ok := r.tools[name]; ok {
 			result = append(result, t)
 		}
@@ -103,7 +93,7 @@ func (r *Registry) Invoke(ctx context.Context, name, input string) (string, erro
 	t, ok := r.tools[name]
 	if !ok {
 		switch name {
-		case GetCurrentTime, QueryInternalDocs, QueryPrometheusAlerts, QueryLog:
+		case GetCurrentTime, QueryInternalDocs, QueryPrometheusAlerts:
 			return "", ErrDisabledTool
 		default:
 			return "", ErrUnknownTool
@@ -117,7 +107,7 @@ func Definitions(cfg config.Tools) ([]Definition, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	result := make([]Definition, 0, 2)
+	result := make([]Definition, 0, 3)
 	if cfg.GetCurrentTimeEnabled {
 		d, err := definition[*GetCurrentTimeInput, GetCurrentTimeOutput](GetCurrentTime, timeDescription)
 		if err != nil {
@@ -139,13 +129,6 @@ func Definitions(cfg config.Tools) ([]Definition, error) {
 		}
 		result = append(result, d)
 	}
-	if cfg.QueryLogEnabled {
-		d, err := definition[*operations.LogInput, operations.LogResult](QueryLog, logDescription)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, d)
-	}
 	return result, nil
 }
 
@@ -160,7 +143,6 @@ func Select(cfg config.Tools, name string) (config.Tools, error) {
 	cfg.GetCurrentTimeEnabled = name == GetCurrentTime
 	cfg.QueryInternalDocsEnabled = name == QueryInternalDocs
 	cfg.QueryPrometheusAlertsEnabled = name == QueryPrometheusAlerts
-	cfg.QueryLogEnabled = name == QueryLog
 	return cfg, nil
 }
 

@@ -24,7 +24,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 )
 
-var opsBinary, stdioBinary string
+var opsBinary string
 
 func TestSDKPlanningToolTurn(t *testing.T) {
 	s, _, _ := modelServer(t, "normal")
@@ -59,8 +59,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	opsBinary = filepath.Join(dir, "ai_ops_cmd")
-	stdioBinary = filepath.Join(dir, "stdio_fixture")
-	for _, item := range []struct{ binary, pkg string }{{opsBinary, "./cmd/ai_ops_cmd"}, {stdioBinary, "./test/operations/stdiofixture"}} {
+	for _, item := range []struct{ binary, pkg string }{{opsBinary, "./cmd/ai_ops_cmd"}} {
 		cmd := exec.Command("go", "build", "-o", item.binary, item.pkg)
 		cmd.Dir = "../.."
 		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
@@ -78,7 +77,7 @@ func TestMain(m *testing.M) {
 func cleanEnv(extra ...string) []string {
 	values := []string{}
 	for _, v := range os.Environ() {
-		if !strings.HasPrefix(v, "ONCALL_") && !strings.HasPrefix(v, "ARK_API_KEY=") && !strings.HasPrefix(v, "TENCENTCLOUD_") {
+		if !strings.HasPrefix(v, "ONCALL_") && !strings.HasPrefix(v, "ARK_API_KEY=") {
 			values = append(values, v)
 		}
 	}
@@ -188,7 +187,7 @@ func modelServer(t *testing.T, scenario string) (*httptest.Server, *atomic.Int32
 			if scenario == "executor-limit" {
 				msg = call("get_current_time", map[string]any{})
 			} else {
-				for _, name := range []string{"query_prometheus_alerts", "get_current_time", "query_log"} {
+				for _, name := range []string{"query_prometheus_alerts", "get_current_time"} {
 					enabled := false
 					for _, tool := range req.Tools {
 						if tool.Function.Name == name {
@@ -204,11 +203,7 @@ func modelServer(t *testing.T, scenario string) (*httptest.Server, *atomic.Int32
 						}
 					}
 					if enabled && !seen {
-						args := map[string]any{}
-						if name == "query_log" {
-							args["query"] = "level:ERROR"
-						}
-						msg = call(name, args)
+						msg = call(name, map[string]any{})
 						break
 					}
 				}
@@ -226,13 +221,13 @@ func modelEnv(base string) []string {
 	return []string{
 		"ONCALL_OPS_PLANNER_BASE_URL=" + base + "/planner/v1", "ONCALL_OPS_PLANNER_MODEL=planner-id", "ONCALL_OPS_PLANNER_API_KEY=planner-key",
 		"ONCALL_OPS_EXECUTOR_BASE_URL=" + base + "/executor/v1", "ONCALL_OPS_EXECUTOR_MODEL=executor-id", "ONCALL_OPS_EXECUTOR_API_KEY=executor-key",
-		"ONCALL_TOOLS_QUERY_INTERNAL_DOCS_ENABLED=false", "ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=false", "ONCALL_TOOLS_QUERY_LOG_ENABLED=false",
+		"ONCALL_TOOLS_QUERY_INTERNAL_DOCS_ENABLED=false", "ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=false",
 		"ONCALL_OPS_MAX_ITERATIONS=2", "ONCALL_OPS_EXECUTOR_MAX_STEPS=6", "ONCALL_OPS_TIMEOUT=5s",
 	}
 }
 
 func TestCLISDKReportEventsAndOperations(t *testing.T) {
-	for _, scenario := range []string{"normal", "no-alerts", "log-failure", "replan"} {
+	for _, scenario := range []string{"normal", "no-alerts", "prom-auth", "replan"} {
 		t.Run(scenario, func(t *testing.T) {
 			s, pc, ec := modelServer(t, scenario)
 			defer s.Close()
@@ -243,6 +238,11 @@ func TestCLISDKReportEventsAndOperations(t *testing.T) {
 					t.Error(r.URL.Path)
 				}
 				w.Header().Set("Content-Type", "application/json")
+				if scenario == "prom-auth" {
+					w.WriteHeader(http.StatusUnauthorized)
+					io.WriteString(w, "fixture-private-secret")
+					return
+				}
 				alerts := []any{}
 				if scenario != "no-alerts" {
 					alerts = append(alerts, map[string]any{"labels": map[string]string{"alertname": "HighCPU", "instance": "node-a"}, "annotations": map[string]string{}, "state": "firing", "activeAt": "2026-10-19T00:00:00Z", "value": "1"})
@@ -251,12 +251,7 @@ func TestCLISDKReportEventsAndOperations(t *testing.T) {
 			}))
 			defer prom.Close()
 			env := modelEnv(s.URL)
-			env = append(env, "ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true", "ONCALL_PROMETHEUS_BASE_URL="+prom.URL, "ONCALL_TOOLS_QUERY_LOG_ENABLED=true", "ONCALL_LOG_MCP_COMMAND="+stdioBinary, "ONCALL_LOG_REGION=ap-guangzhou", "ONCALL_LOG_TOPIC_ID=test-topic", "TENCENTCLOUD_SECRET_ID=fixture-id", "TENCENTCLOUD_SECRET_KEY=fixture-key")
-			args := `["--ops-log"]`
-			if scenario == "log-failure" {
-				args = `["--ops-log-fail"]`
-			}
-			env = append(env, "ONCALL_LOG_MCP_ARGS_JSON="+args)
+			env = append(env, "ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true", "ONCALL_PROMETHEUS_BASE_URL="+prom.URL)
 			path := filepath.Join(t.TempDir(), "events.jsonl")
 			out, stderr, err := cli(t, env, "--query", "investigate", "--events", path)
 			var result pipeline.Result
@@ -285,10 +280,10 @@ func TestCLISDKReportEventsAndOperations(t *testing.T) {
 			if info, _ := os.Stat(path); info.Mode().Perm() != 0600 {
 				t.Fatal("event file permissions")
 			}
-			if strings.Contains(string(data), "signature cache expired") || strings.Contains(out, "fixture-private-secret") || strings.Contains(string(data), "fixture-key") {
-				t.Fatal("raw log/credential leaked")
+			if strings.Contains(out, "fixture-private-secret") || strings.Contains(string(data), "fixture-private-secret") {
+				t.Fatal("raw upstream response leaked")
 			}
-			if scenario == "log-failure" && !strings.Contains(string(data), "authentication_failed") {
+			if scenario == "prom-auth" && !strings.Contains(string(data), "authentication_failed") {
 				t.Fatal("missing recoverable failure")
 			}
 			if scenario == "replan" && !strings.Contains(string(data), `"type":"replan"`) {

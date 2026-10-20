@@ -14,10 +14,9 @@ func TestPostmanOpsCLI(t *testing.T) {
 	if base == "" {
 		t.Skip("set ONCALL_OPS_SIM_URL for local Postman simulation")
 	}
-	for _, scenario := range []struct{ name, prom, log, code string }{{"normal", "normal", "--ops-log", ""}, {"no-alerts", "empty", "--ops-log", ""}, {"log-failure", "normal", "--ops-log-fail", ""}, {"replan", "normal", "--ops-log-fail", ""}, {"prom-auth", "auth", "--ops-log", ""}, {"plan-limit", "normal", "--ops-log", "plan_limit"}, {"executor-limit", "normal", "--ops-log", "executor_limit"}, {"model-error", "normal", "--ops-log", "execution_failed"}} {
+	for _, scenario := range []struct{ name, prom, code string }{{"normal", "normal", ""}, {"no-alerts", "empty", ""}, {"replan", "normal", ""}, {"prom-auth", "auth", ""}, {"plan-limit", "normal", "plan_limit"}, {"executor-limit", "normal", "executor_limit"}, {"model-error", "normal", "execution_failed"}} {
 		t.Run(scenario.name, func(t *testing.T) {
-			env := append(modelEnv(base+"/model"), "ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true", "ONCALL_PROMETHEUS_BASE_URL="+base+"/prom/"+scenario.prom,
-				"ONCALL_TOOLS_QUERY_LOG_ENABLED=true", "ONCALL_LOG_MCP_COMMAND="+stdioBinary, `ONCALL_LOG_MCP_ARGS_JSON=["`+scenario.log+`"]`, "ONCALL_LOG_REGION=ap-guangzhou", "ONCALL_LOG_TOPIC_ID=test-topic", "TENCENTCLOUD_SECRET_ID=fixture-id", "TENCENTCLOUD_SECRET_KEY=fixture-key")
+			env := append(modelEnv(base+"/model"), "ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true", "ONCALL_PROMETHEUS_BASE_URL="+base+"/prom/"+scenario.prom)
 			out, stderr, err := cli(t, env, "--query", "ops:"+scenario.name)
 			if scenario.code != "" {
 				if err == nil || out != "" || !strings.Contains(stderr, `"code":"`+scenario.code+`"`) {

@@ -44,7 +44,7 @@ func TestOpsIntegration(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout+10*time.Second)
 	defer cancel()
-	query := "请使用已启用的告警工具检查当前告警，使用时间工具核对时间，并使用内部文档工具检索相关排查手册。若日志工具可用请查询相关日志。根据真实工具结果生成报告；明确列出缺失或失败的工具以及未确认事项，不要执行任何修复。"
+	query := "请使用已启用的告警工具检查当前告警，使用时间工具核对时间，并使用内部文档工具检索相关排查手册。根据真实工具结果生成报告；明确列出缺失或失败的工具以及未确认事项，不要执行任何修复。"
 	cmd := exec.CommandContext(ctx, opsBinary, "--query", query)
 	cmd.Dir = t.TempDir()
 	cmd.Env = os.Environ()
@@ -68,5 +68,5 @@ func TestOpsIntegration(t *testing.T) {
 	if !seen["query_prometheus_alerts"] || (tools.GetCurrentTimeEnabled && !seen["get_current_time"]) {
 		t.Fatal("model did not perform required real alert/time checks")
 	}
-	t.Logf("report has five sections; events=%d; raw report and business data not logged; docs_enabled=%t log_enabled=%t", len(result.Detail), tools.QueryInternalDocsEnabled, tools.QueryLogEnabled)
+	t.Logf("report has five sections; events=%d; raw report and business data not logged; docs_enabled=%t alerts_enabled=%t", len(result.Detail), tools.QueryInternalDocsEnabled, tools.QueryPrometheusAlertsEnabled)
 }

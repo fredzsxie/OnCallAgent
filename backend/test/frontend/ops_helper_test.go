@@ -15,7 +15,6 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/tools"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/service/operations"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -28,18 +27,6 @@ type opsFixtureAgent struct {
 
 func (a opsFixtureAgent) RunWithEvents(ctx context.Context, q string, sink func(pipeline.Event) error) (*pipeline.Result, error) {
 	return a.agents[a.mode.Load().(string)].RunWithEvents(ctx, q, sink)
-}
-
-type fixtureLogs bool
-
-func (f fixtureLogs) Query(ctx context.Context, _ *operations.LogInput) (operations.LogResult, error) {
-	if ctx.Err() != nil {
-		return operations.LogResult{}, ctx.Err()
-	}
-	if f {
-		return operations.LogResult{}, operations.Failure("query_log", operations.ErrAuthentication)
-	}
-	return operations.LogResult{Records: []json.RawMessage{json.RawMessage(`{"Source":"node-a","message":"fixture evidence"}`)}}, nil
 }
 
 // Only the explicit local acceptance helper exposes scenario controls; production routes never do.
@@ -59,7 +46,7 @@ func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, stor
 	for _, name := range []string{"normal", "empty", "limited", "failure", "timeout", "slow", "unsafe"} {
 		modelScenario := name
 		if name == "limited" {
-			modelScenario = "log-failure"
+			modelScenario = "prom-auth"
 		}
 		if name == "failure" {
 			modelScenario = "model-error"
@@ -79,12 +66,15 @@ func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, stor
 		if name == "empty" {
 			promPath = "empty"
 		}
+		if name == "limited" {
+			promPath = "auth"
+		}
 		prom, err := client.NewPrometheus(config.ToolHTTP{URL: base + "/prom/" + promPath, Timeout: time.Second, Auth: config.HTTPAuth{Type: "none"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(prom.Close)
-		reg, err := tools.NewRegistry(config.Tools{TimeZone: "Asia/Shanghai", QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, QueryPrometheusAlertsEnabled: true, QueryLogEnabled: true}, tools.Dependencies{Retriever: r, Prometheus: prom, Logs: fixtureLogs(name == "limited")})
+		reg, err := tools.NewRegistry(config.Tools{TimeZone: "Asia/Shanghai", QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, QueryPrometheusAlertsEnabled: true}, tools.Dependencies{Retriever: r, Prometheus: prom})
 		if err != nil {
 			t.Fatal(err)
 		}

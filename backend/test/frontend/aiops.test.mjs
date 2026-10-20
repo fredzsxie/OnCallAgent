@@ -22,7 +22,7 @@ test('errors retain partial details and no-alert status uses the latest successf
   await assert.rejects(analyzeOps({fetcher: async () => json({message: 'timed out', data: {code: 'timeout', detail: [entry({count: 0})]}}, 504)}), err => err.code === 'timeout' && err.detail.length === 1);
   assert.equal(opsOutcome([entry({count: 0})]).noAlerts, true);
   for (const events of [[], [entry({summary: 'alerts=0'})], [entry({count: 0}), entry({status: 'failed'})], [entry({count: 0}), entry({count: 1})]]) assert.equal(!!opsOutcome(events).noAlerts, false);
-  assert.equal(opsOutcome([entry({count: 0}), entry({tool: 'query_log', status: 'failed'})]).limited, true);
+  assert.equal(opsOutcome([entry({count: 0}), entry({tool: 'query_prometheus_alerts', status: 'failed'})]).limited, true);
 });
 
 test('run guard, immediate cancellation and late completion isolate successive operations', async () => {

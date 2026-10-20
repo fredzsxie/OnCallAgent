@@ -110,7 +110,7 @@ func TestAIOpsActualGraphHTTPContractAndCounts(t *testing.T) {
 	for _, scenario := range []struct {
 		name        string
 		empty, fail bool
-	}{{"normal", false, false}, {"empty", true, false}, {"log-failure", false, true}} {
+	}{{"normal", false, false}, {"empty", true, false}, {"prom-auth", false, true}} {
 		t.Run(scenario.name, func(t *testing.T) {
 			a := build(t, cfg(), plannerModel(), toolExecutor(t, scenario.empty, scenario.fail), registry(t, scenario.empty, scenario.fail))
 			url := startOpsAPI(t, service(t, a, time.Second))
@@ -133,7 +133,11 @@ func TestAIOpsActualGraphHTTPContractAndCounts(t *testing.T) {
 			for _, e := range body.Data.Detail {
 				if e.Tool == "query_prometheus_alerts" {
 					seen = true
-					if e.Count == nil || (*e.Count == 0) != scenario.empty {
+					if scenario.fail {
+						if e.Status != "failed" || e.Count != nil {
+							t.Fatal("missing tool failure", e)
+						}
+					} else if e.Count == nil || (*e.Count == 0) != scenario.empty {
 						t.Fatal("missing typed count", e)
 					}
 				}

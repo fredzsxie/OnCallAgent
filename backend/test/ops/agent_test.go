@@ -55,7 +55,7 @@ func planCall() *schema.Message {
 	return call("Plan", map[string]any{"steps": []string{"Inspect alerts and evidence"}})
 }
 func reportCall() *schema.Message {
-	return call("Respond", map[string]string{"alerts": "HighCPU on node-a", "evidence": "auth.md; time and logs were checked where available", "root_causes": "Candidate only: stale key cache", "recommendations": "Follow auth.md; do not change production automatically", "unconfirmed": "Missing or failed tools remain unconfirmed; no alerts does not prove health"})
+	return call("Respond", map[string]string{"alerts": "HighCPU on node-a", "evidence": "auth.md; time and alerts were checked where available", "root_causes": "Candidate only: stale key cache", "recommendations": "Follow auth.md; do not change production automatically", "unconfirmed": "Missing or failed tools remain unconfirmed; no alerts does not prove health"})
 }
 func plannerModel() *script {
 	return &script{fn: func(_ context.Context, _ []*schema.Message, infos []*schema.ToolInfo) (*schema.Message, error) {
@@ -85,19 +85,13 @@ type alertFunc func(context.Context) (operations.AlertsResult, error)
 
 func (f alertFunc) Alerts(ctx context.Context) (operations.AlertsResult, error) { return f(ctx) }
 
-type logFunc func(context.Context, *operations.LogInput) (operations.LogResult, error)
-
-func (f logFunc) Query(ctx context.Context, in *operations.LogInput) (operations.LogResult, error) {
-	return f(ctx, in)
-}
-
 type recallFunc func(context.Context, string) ([]*schema.Document, error)
 
 func (f recallFunc) Retrieve(ctx context.Context, q string, _ ...einoretriever.Option) ([]*schema.Document, error) {
 	return f(ctx, q)
 }
 
-func registry(t *testing.T, empty, logFails bool) *tools.Registry {
+func registry(t *testing.T, empty, alertsFail bool) *tools.Registry {
 	t.Helper()
 	r, err := retriever.NewMilvusRetriever(recallFunc(func(context.Context, string) ([]*schema.Document, error) {
 		if empty {
@@ -108,20 +102,17 @@ func registry(t *testing.T, empty, logFails bool) *tools.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, err := tools.NewRegistry(config.Tools{TimeZone: "UTC", QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, QueryPrometheusAlertsEnabled: true, QueryLogEnabled: true}, tools.Dependencies{Retriever: r,
+	reg, err := tools.NewRegistry(config.Tools{TimeZone: "UTC", QueryInternalDocsEnabled: true, GetCurrentTimeEnabled: true, QueryPrometheusAlertsEnabled: true}, tools.Dependencies{Retriever: r,
 		Now: func() time.Time { return time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC) },
 		Prometheus: alertFunc(func(context.Context) (operations.AlertsResult, error) {
+			if alertsFail {
+				return operations.AlertsResult{}, operations.Failure(operations.PrometheusTool, operations.ErrAuthentication)
+			}
 			alerts := []operations.Alert{}
 			if !empty {
 				alerts = append(alerts, operations.Alert{Labels: map[string]string{"alertname": "HighCPU", "instance": "node-a"}})
 			}
 			return operations.AlertsResult{Source: "prom", Alerts: alerts}, nil
-		}),
-		Logs: logFunc(func(context.Context, *operations.LogInput) (operations.LogResult, error) {
-			if logFails {
-				return operations.LogResult{}, operations.Failure(operations.LogTool, operations.ErrAuthentication)
-			}
-			return operations.LogResult{Records: []json.RawMessage{json.RawMessage(`{"Source":"node-a","message":"private-log-body"}`)}}, nil
 		}),
 	})
 	if err != nil {
@@ -130,16 +121,16 @@ func registry(t *testing.T, empty, logFails bool) *tools.Registry {
 	return reg
 }
 
-func toolExecutor(t *testing.T, empty, logFails bool) *script {
+func toolExecutor(t *testing.T, empty, alertsFail bool) *script {
 	return &script{fn: func(_ context.Context, in []*schema.Message, _ []*schema.ToolInfo) (*schema.Message, error) {
 		last := in[len(in)-1]
-		for _, request := range []struct{ name, args string }{{"query_prometheus_alerts", "{}"}, {"get_current_time", "{}"}, {"query_internal_docs", `{"query":"HighCPU node-a"}`}, {"query_log", `{"query":"level:ERROR","region":"ap-guangzhou","topic_id":"test-topic"}`}} {
+		for _, request := range []struct{ name, args string }{{"query_prometheus_alerts", "{}"}, {"get_current_time", "{}"}, {"query_internal_docs", `{"query":"HighCPU node-a"}`}} {
 			found := false
 			for _, m := range in {
 				if m.Role == schema.Tool && m.ToolName == request.name {
 					found = true
-					if request.name == "query_log" && logFails && !strings.Contains(m.Content, "authentication_failed") {
-						t.Error("log failure did not reach executor")
+					if request.name == "query_prometheus_alerts" && alertsFail && !strings.Contains(m.Content, "authentication_failed") {
+						t.Error("alert failure did not reach executor")
 					}
 					if request.name == "query_internal_docs" && !empty && !strings.Contains(m.Content, "auth.md") {
 						t.Error("lost evidence source")
@@ -163,7 +154,7 @@ func TestActualADKAnalysisAndRecoverableToolFailures(t *testing.T) {
 	for _, scenario := range []struct {
 		name          string
 		empty, failed bool
-	}{{"normal", false, false}, {"no-alerts-and-no-runbook", true, false}, {"log-failed", false, true}} {
+	}{{"normal", false, false}, {"no-alerts-and-no-runbook", true, false}, {"alerts-failed", false, true}} {
 		t.Run(scenario.name, func(t *testing.T) {
 			a := build(t, cfg(), plannerModel(), toolExecutor(t, scenario.empty, scenario.failed), registry(t, scenario.empty, scenario.failed))
 			var events []pipeline.Event
@@ -183,7 +174,7 @@ func TestActualADKAnalysisAndRecoverableToolFailures(t *testing.T) {
 				}
 				if e.Type == "tool" {
 					toolCount++
-					if e.Tool == "query_log" && scenario.failed && e.Status != "failed" {
+					if e.Tool == "query_prometheus_alerts" && scenario.failed && e.Status != "failed" {
 						t.Fatal(e)
 					}
 					if scenario.empty && (e.Tool == "query_internal_docs" || e.Tool == "query_prometheus_alerts") && !strings.HasSuffix(e.Summary, "=0") {
@@ -192,7 +183,7 @@ func TestActualADKAnalysisAndRecoverableToolFailures(t *testing.T) {
 				}
 			}
 			data, _ := json.Marshal(r.Detail)
-			if toolCount != 4 || len(events) != len(r.Detail) || strings.Contains(string(data), "private-log-body") {
+			if toolCount != 3 || len(events) != len(r.Detail) {
 				t.Fatalf("details %s", data)
 			}
 		})
@@ -361,14 +352,14 @@ func TestCancellationTimeoutAndConcurrentStateIsolation(t *testing.T) {
 func TestToolTimeoutFormatAndUpstreamErrorsAreRecoverable(t *testing.T) {
 	for _, failure := range []error{context.DeadlineExceeded, operations.ErrInvalidResponse, operations.ErrUpstream} {
 		t.Run(failure.Error(), func(t *testing.T) {
-			reg, err := tools.NewRegistry(config.Tools{TimeZone: "UTC", QueryLogEnabled: true}, tools.Dependencies{Logs: logFunc(func(ctx context.Context, _ *operations.LogInput) (operations.LogResult, error) {
+			reg, err := tools.NewRegistry(config.Tools{TimeZone: "UTC", QueryPrometheusAlertsEnabled: true}, tools.Dependencies{Prometheus: alertFunc(func(ctx context.Context) (operations.AlertsResult, error) {
 				if errors.Is(failure, context.DeadlineExceeded) {
 					child, cancel := context.WithTimeout(ctx, 5*time.Millisecond)
 					defer cancel()
 					<-child.Done()
-					return operations.LogResult{}, child.Err()
+					return operations.AlertsResult{}, child.Err()
 				}
-				return operations.LogResult{}, failure
+				return operations.AlertsResult{}, failure
 			})})
 			if err != nil {
 				t.Fatal(err)
@@ -376,12 +367,12 @@ func TestToolTimeoutFormatAndUpstreamErrorsAreRecoverable(t *testing.T) {
 			ex := &script{fn: func(_ context.Context, in []*schema.Message, _ []*schema.ToolInfo) (*schema.Message, error) {
 				last := in[len(in)-1]
 				if last.Role != schema.Tool {
-					return call("query_log", map[string]string{"query": "*"}), nil
+					return call("query_prometheus_alerts", map[string]any{}), nil
 				}
-				if !strings.Contains(last.Content, operations.Failure("query_log", failure).Code) {
+				if !strings.Contains(last.Content, operations.Failure("query_prometheus_alerts", failure).Code) {
 					t.Error("lost safe error", last.Content)
 				}
-				return schema.AssistantMessage("Continue with available evidence; logs unavailable.", nil), nil
+				return schema.AssistantMessage("Continue with available evidence; alerts unavailable.", nil), nil
 			}}
 			result, err := build(t, cfg(), plannerModel(), ex, reg).Run(context.Background(), "inspect")
 			if err != nil || result.Report == "" {

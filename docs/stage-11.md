@@ -26,7 +26,7 @@ ai_ops_cmd --query ... ────────────→ AIOpsService → 
 
 Web 在启动时加载既有 Ops 配置并创建规划/执行模型，复用已经初始化的 Retriever、Registry 和外部工具客户端；每个请求独立执行，退出集中关闭客户端。CLI 保留必填 --query、report/detail stdout 和可选 JSONL；服务接收同一个窄 Agent 接口与超时，保留事件回调。
 
-请求为 `{}`（也兼容空请求体），固定检查当前告警、时间、相关手册及可用日志；不接收自定义 Id/Question，不猜测地域/主题，不执行修复。存在请求体时要求 application/json 和空 JSON 对象，畸形 JSON、数组、null 或额外字段返回 400，不调用 Agent。GoFrame 不解析无字段请求的 body，因此控制器负责这层请求提取校验，业务执行留在 service。
+请求为 `{}`（也兼容空请求体），固定检查当前告警、时间和相关手册；不接收自定义 Id/Question，不执行修复。存在请求体时要求 application/json 和空 JSON 对象，畸形 JSON、数组、null 或额外字段返回 400，不调用 Agent。GoFrame 不解析无字段请求的 body，因此控制器负责这层请求提取校验，业务执行留在 service。
 
 成功格式：
 
@@ -110,7 +110,7 @@ postman collection run backend/test/frontend/ops.collection.json \
   --env-var helper_url="$(cat /tmp/oncall-stage11-url)"
 ```
 
-本地服务使用实际 GoFrame、AIOpsService、ADK、模型 SDK、时间工具和 Prometheus HTTP 客户端。文档来自 MemoryStore，日志为内存 fixture，不能据此验证语义向量或真实 CLS；既有独立 stdio 协议测试继续回归。模型与 Prometheus mock 复用原有本地契约，未发布到 Postman 云端，需登录的远端资源归属检索未执行。
+本地服务使用实际 GoFrame、AIOpsService、ADK、模型 SDK、时间工具和 Prometheus HTTP 客户端。文档来自 MemoryStore，不能据此验证语义向量检索；模型与 Prometheus mock 复用原有本地契约，未发布到 Postman 云端，需登录的远端资源归属检索未执行。
 
 仅测试服务暴露 `/__test/ops-scenario`，接收 normal、empty、limited、failure、timeout、slow、unsafe。可用 curl 手动选择，再点击页面按钮；生产服务不注册该端点。Ctrl+C 停止三个进程，模拟变更后需重启加载。
 
@@ -126,7 +126,7 @@ curl -sS -X POST "$(cat /tmp/oncall-stage11-url)/__test/ops-scenario" \
 | AI Ops → 开始分析 | 显示运行和计时，完成后出现五部分报告 |
 | 运行时再提交、切换、上传 | 控件禁用，不触发第二次操作 |
 | empty 场景 | 数值 count=0，提示未发现活动告警及健康判断限制 |
-| limited 场景 | 200 报告保留，提示证据受限，详情记录日志失败 |
+| limited 场景 | 200 报告保留，提示证据受限，详情记录告警工具认证失败 |
 | failure / timeout | 不展示旧报告，分别提示依赖失败 / 超时，保留部分详情 |
 | slow → 取消 → normal → 重试 | 立即恢复控件，旧请求迟到结果不覆盖新结果 |
 | 展开详情，键盘 Enter | 默认折叠，可用键盘展开，内容为纯文本 |
@@ -150,7 +150,7 @@ GOTOOLCHAIN=local go -C backend build ./...
 - Postman 经实际开发代理调用真实 GoFrame/ADK：14 请求、17 断言通过。模拟日志核对了实际模型 POST 和 Prometheus GET。
 - 浏览器验证正常/无告警/证据受限、运行锁、取消、超时、失败恢复、折叠与键盘、聊天保留和刷新清空。1280×900 桌面和 390×844 移动端检查完成；危险元素和链接计数为 0，表格保留。
 - 真实 .env 服务成功启动于独立验收端口 6874；一次只读 HTTP 分析返回 502、execution_failed、1 条部分事件，未生成完整云端报告。安全失败映射可用，真实成功报告验收未通过；未更改超时预算或重复重试。
-- 第 10 步两次模型超时记录保留；CLS 缺少凭据的真实查询未执行。本次不写入、不初始化知识集合，外部 Nginx 部署未执行。
+- 第 10 步两次模型超时记录保留。本次不写入、不初始化知识集合，外部 Nginx 部署未执行。
 
 显式真实 HTTP 验收：先启动使用真实配置的服务，再执行：
 

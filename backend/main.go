@@ -103,7 +103,7 @@ func run() error {
 		return err
 	}
 	defer operations.Close()
-	registry, err := tools.NewRegistry(toolsCfg, tools.Dependencies{Retriever: recall, Now: time.Now, Prometheus: operations.Prometheus, Logs: operations.Logs})
+	registry, err := tools.NewRegistry(toolsCfg, tools.Dependencies{Retriever: recall, Now: time.Now, Prometheus: operations.Prometheus})
 	if err != nil {
 		return err
 	}

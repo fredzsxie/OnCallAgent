@@ -40,7 +40,6 @@ func run() error {
 	flags := flag.NewFlagSet("tools_cmd", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	list := flags.Bool("list-tools", false, "print enabled local tool input/output schemas without connections")
-	mcpTools := flags.Bool("mcp-tools", false, "initialize configured CLS MCP and inspect its tool schemas")
 	name := flags.String("tool", "", "enabled tool name to invoke")
 	input := flags.String("input", "{}", "JSON arguments for --tool")
 	if err := flags.Parse(os.Args[1:]); err != nil {
@@ -55,9 +54,6 @@ func run() error {
 	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	modes := 0
 	if *list {
-		modes++
-	}
-	if *mcpTools {
 		modes++
 	}
 	if set["tool"] {
@@ -84,9 +80,6 @@ func run() error {
 		return json.NewEncoder(os.Stdout).Encode(definitions)
 	}
 	selected := *name
-	if *mcpTools {
-		selected = tools.QueryLog
-	}
 	cfg, err = tools.Select(cfg, selected)
 	if err != nil {
 		return err
@@ -98,10 +91,7 @@ func run() error {
 		return err
 	}
 	defer connections.Close()
-	if *mcpTools {
-		return json.NewEncoder(os.Stdout).Encode(connections.MCP.Tools())
-	}
-	deps := tools.Dependencies{Prometheus: connections.Prometheus, Logs: connections.Logs}
+	deps := tools.Dependencies{Prometheus: connections.Prometheus}
 	if cfg.QueryInternalDocsEnabled {
 		embCfg, err := config.LoadEmbedding()
 		if err != nil {

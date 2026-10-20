@@ -3,7 +3,7 @@ const http = require('http');
 const report = {
   alerts: '查询完成；仅依据实际工具返回的告警。',
   evidence: '已检查启用的工具。此报告由本地协议模拟生成。',
-  root_causes: '候选原因需要依据手册及日志继续确认。',
+  root_causes: '候选原因需要依据告警及手册继续确认。',
   recommendations: '遵循内部手册，不自动执行修复。',
   unconfirmed: '禁用、失败或无数据的工具均为证据限制；无告警不代表系统健康。'
 };
@@ -27,7 +27,7 @@ http.createServer((req, res) => {
   const tools=(body.tools || []).map(t=>t.function.name);
   let name, args, content;
   if (body.model === 'planner-id') {
-    if (tools.length === 1) { name='Plan'; args={steps:['Inspect alerts and logs']}; }
+    if (tools.length === 1) { name='Plan'; args={steps:['Inspect alerts and evidence']}; }
     else if (text.includes('ops:plan-limit') || (text.includes('ops:replan') && !text.includes('Follow up on limitations'))) {
       name='Plan'; args={steps:['Follow up on limitations']};
     } else { name='Respond'; args={...report};
@@ -38,8 +38,8 @@ http.createServer((req, res) => {
   } else {
     const seen=new Set((body.messages || []).flatMap(m=>(m.tool_calls || []).map(c=>c.function.name)));
     name = text.includes('ops:executor-limit') ? 'get_current_time' :
-      ['query_prometheus_alerts','get_current_time','query_internal_docs','query_log'].find(n=>tools.includes(n) && !seen.has(n));
-    if (name) args=name==='query_log' ? {query:'level:ERROR'} : name==='query_internal_docs' ? {query:'HighCPU 排查'} : {};
+      ['query_prometheus_alerts','get_current_time','query_internal_docs'].find(n=>tools.includes(n) && !seen.has(n));
+    if (name) args=name==='query_internal_docs' ? {query:'HighCPU 排查'} : {};
     else content='Evidence collected; retain failures and missing tools as limitations.';
   }
   const toolCall=name ? {id:'fixture-call',type:'function',function:{name,arguments:JSON.stringify(args)}} : undefined;

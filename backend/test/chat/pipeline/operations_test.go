@@ -20,28 +20,15 @@ type alertQuery func(context.Context) (operations.AlertsResult, error)
 
 func (f alertQuery) Alerts(ctx context.Context) (operations.AlertsResult, error) { return f(ctx) }
 
-type logQuery func(context.Context, *operations.LogInput) (operations.LogResult, error)
-
-func (f logQuery) Query(ctx context.Context, in *operations.LogInput) (operations.LogResult, error) {
-	return f(ctx, in)
-}
-
 func TestOperationsToolsInvokeAndStreamInActualGraph(t *testing.T) {
 	for _, stream := range []bool{false, true} {
-		for _, name := range []string{tools.QueryPrometheusAlerts, tools.QueryLog} {
+		for _, name := range []string{tools.QueryPrometheusAlerts} {
 			t.Run(fmt.Sprintf("%s/stream=%t", name, stream), func(t *testing.T) {
 				calls := 0
-				registry, err := tools.NewRegistry(config.Tools{TimeZone: "UTC", QueryPrometheusAlertsEnabled: true, QueryLogEnabled: true}, tools.Dependencies{
+				registry, err := tools.NewRegistry(config.Tools{TimeZone: "UTC", QueryPrometheusAlertsEnabled: true}, tools.Dependencies{
 					Prometheus: alertQuery(func(ctx context.Context) (operations.AlertsResult, error) {
 						calls++
 						return operations.AlertsResult{Source: "prometheus", Alerts: []operations.Alert{{Labels: map[string]string{"instance": "host-a"}}}}, nil
-					}),
-					Logs: logQuery(func(ctx context.Context, in *operations.LogInput) (operations.LogResult, error) {
-						calls++
-						if in.Query != "level:ERROR" {
-							t.Error("lost query")
-						}
-						return operations.LogResult{Records: []json.RawMessage{json.RawMessage(`{"Source":"host-a","Time":123}`)}}, nil
 					}),
 				})
 				if err != nil {
@@ -51,9 +38,6 @@ func TestOperationsToolsInvokeAndStreamInActualGraph(t *testing.T) {
 					last := in[len(in)-1]
 					if last.Role != schema.Tool {
 						args := "{}"
-						if name == tools.QueryLog {
-							args = `{"query":"level:ERROR"}`
-						}
 						return toolCall(name, args), nil
 					}
 					var result map[string]any

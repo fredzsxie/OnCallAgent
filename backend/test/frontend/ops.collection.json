@@ -181,7 +181,7 @@
             "exec": [
               "const b=pm.response.json();",
               "pm.test(\"report envelope\",()=>{pm.response.to.have.status(200);pm.expect(b.message).to.eql(\"OK\");pm.expect(b.data.result).to.be.a(\"string\").and.not.empty;pm.expect(b.data.detail).to.be.an(\"array\");});",
-              "pm.test(\"tool failure retained\",()=>{pm.expect(b.data.detail.some(e=>e.tool===\"query_log\"&&e.status===\"failed\")).to.eql(true);});"
+              "pm.test(\"tool failure retained\",()=>{pm.expect(b.data.detail.some(e=>e.tool===\"query_prometheus_alerts\"&&e.status===\"failed\")).to.eql(true);});"
             ]
           }
         }

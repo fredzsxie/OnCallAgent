@@ -111,7 +111,7 @@ func run() (*pipeline.Result, error) {
 		return nil, startupError()
 	}
 	defer ops.Close()
-	deps := tools.Dependencies{Prometheus: ops.Prometheus, Logs: ops.Logs}
+	deps := tools.Dependencies{Prometheus: ops.Prometheus}
 	if toolCfg.QueryInternalDocsEnabled {
 		embCfg, err := config.LoadEmbedding()
 		if err != nil {

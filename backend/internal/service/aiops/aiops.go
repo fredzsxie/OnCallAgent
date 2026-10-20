@@ -9,7 +9,7 @@ import (
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 )
 
-const DefaultQuery = `检查当前 Prometheus 告警，保留每个告警实例，核对当前时间并检索相关内部排查手册。若日志工具可用，使用已配置或明确提供的地域和主题查询相关日志，不猜测查询范围。根据实际证据生成包含告警、证据、根因候选、处理建议及未确认事项的中文报告，引用文档来源。无告警不等于系统健康；明确说明禁用、失败或缺失的工具和证据。仅分析，不执行修复。`
+const DefaultQuery = `检查当前 Prometheus 告警，保留每个告警实例，核对当前时间并检索相关内部排查手册。根据实际证据生成包含告警、证据、根因候选、处理建议及未确认事项的中文报告，引用文档来源。无告警不等于系统健康；明确说明禁用、失败或缺失的工具和证据。仅分析，不执行修复。`
 
 var ErrInitialization = errors.New("ops service initialization failed")
 var ErrInternal = errors.New("ops internal error")

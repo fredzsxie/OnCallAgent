@@ -1,6 +1,6 @@
 # OnCallAgent
 
-OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。另提供可选的 Prometheus 告警与 CLS 日志 MCP 工具，以及独立的 Plan/Execute/Replan 运维 Agent。
+OnCallAgent 是基于 Go 的智能运维 Agent 应用。当前实现 GoFrame 服务骨架、基于 Eino 的普通聊天，豆包 Embedding、Milvus 向量存取，以及知识文件上传、KnowledgeIndexing 图编排、知识检索、时间/内部文档工具及 ChatAgent 对话编排、进程内会话记忆、SSE 对话接口和原生聊天前端。另提供可选的 Prometheus 告警工具，以及独立的 Plan/Execute/Replan 运维 Agent。
 
 固定使用 Go **1.23.12**、GoFrame **v2.7.1**、Eino **v0.6.0**、Eino OpenAI 模型扩展 **v0.1.1**。所有 Go 命令设置 `GOTOOLCHAIN=local`，避免自动切换工具链。依赖版本由 `backend/go.mod` 和 `backend/go.sum` 锁定。
 
@@ -13,12 +13,12 @@ backend/
 │   ├── ai/
 │   │   ├── agent/          # 各 Agent 的 xxx_pipeline 编排与组件适配
 │   │   ├── retriever/      # 复用 Store 的检索组件
-│   │   └── tools/          # 时间、内部文档、告警、日志工具和注册模块
+│   │   └── tools/          # 时间、内部文档、告警工具和注册模块
 │   ├── config/             # 配置读取、环境变量覆盖和校验
 │   ├── controller/         # 接收 HTTP 请求，调用 service
 │   └── service/            # 健康检查、ChatService 和知识库向量服务
 ├── utility/
-│   ├── client/             # 聊天、Embedding、Milvus、Prometheus 和 CLS MCP 客户端
+│   ├── client/             # 聊天、Embedding、Milvus 和 Prometheus 客户端
 │   └── middleware/         # message/data 统一响应及状态码
 └── test/                   # 所有测试文件和本地协议测试
 ```
@@ -336,9 +336,9 @@ node --test backend/test/frontend/*.test.mjs
 
 ## 运维工具（第 9 步）
 
-`query_prometheus_alerts` 查询 `/api/v1/alerts`；`query_log` 由本机 stdio 子进程调用 CLS MCP 的 `SearchLog`。两个工具默认关闭，启用后加入 Web 和 CLI 共用的 ChatAgent 工具集合。每个工具默认超时 15 秒，同时遵循更早的 Agent/请求截止时间。
+`query_prometheus_alerts` 查询 `/api/v1/alerts`。工具默认关闭，启用后加入 Web 和 CLI 共用的 ChatAgent 工具集合。默认超时 15 秒，同时遵循更早的 Agent/请求截止时间。
 
-配置见 `backend/.env.example`。Prometheus 默认地址为 `http://127.0.0.1:9090`；CLS MCP 使用固定版本的官方 npm 包，需要在运行后端的机器安装 Node.js/npm，并在本机 `.env` 填入 Tencent SecretId/SecretKey。地域和主题可通过配置或调用输入提供。启用后的工具结果会交给当前配置的聊天模型。
+配置见 `backend/.env.example`。Prometheus 默认地址为 `http://127.0.0.1:9090`；启用后的告警结果会交给当前配置的聊天模型。
 
 ```bash
 cd OnCallAgent/backend
@@ -349,30 +349,24 @@ GOTOOLCHAIN=local go run ./cmd/tools_cmd --list-tools
 ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED=true \
   GOTOOLCHAIN=local go run ./cmd/tools_cmd --tool query_prometheus_alerts --input '{}'
 
-# 填好 TENCENTCLOUD_SECRET_ID/KEY 后可显式启用日志工具
-ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
-  GOTOOLCHAIN=local go run ./cmd/tools_cmd --mcp-tools
-ONCALL_TOOLS_QUERY_LOG_ENABLED=true \
-  GOTOOLCHAIN=local go run ./cmd/tools_cmd --tool query_log \
-  --input '{"query":"level:ERROR","region":"ap-guangzhou","topic_id":"实际主题ID","limit":20}'
 ```
 
-本阶段本地 HTTP 与 stdio/MCP、真实 Graph 和 Postman CLI 模拟验收通过；真实 Prometheus 与 CLS 查询未执行。新增 MCP SDK 固定为 `github.com/mark3labs/mcp-go v0.42.0`；其依赖要求带来两项间接依赖的最小版本升级，详情及完整配置、错误分类、验收命令见 [第 9 步文档](docs/stage-09.md)。
+本地 HTTP fixture、真实 Graph 和 Postman CLI 模拟覆盖告警工具；完整配置、错误分类及验收命令见 [第 9 步文档](docs/stage-09.md)。
 
 ## 运维 Agent（第 10 步）
 
-独立 CLI 使用 Eino ADK 的 `Planner → Executor → Replanner`：规划模型制订并调整计划，执行模型调用已启用的时间、文档、告警和日志工具。默认最多 8 次执行/重规划循环、每个计划步骤最多 12 次执行模型调用，总预算 180 秒。普通聊天接口保持原行为。
+独立 CLI 使用 Eino ADK 的 `Planner → Executor → Replanner`：规划模型制订并调整计划，执行模型调用已启用的时间、文档和告警工具。默认最多 8 次执行/重规划循环、每个计划步骤最多 12 次执行模型调用，总预算 180 秒。普通聊天接口保持原行为。
 
 ```bash
 cd OnCallAgent/backend
 GOTOOLCHAIN=local go run ./cmd/ai_ops_cmd \
-  --query '检查当前告警，结合内部手册和日志给出排查报告。' \
+  --query '检查当前告警，结合内部手册给出排查报告。' \
   --events /tmp/oncall-ops-events.jsonl
 ```
 
 成功输出 `{"report":"五部分 Markdown 报告","detail":[...]}`；错误输出到 stderr 并退出非零，保留已完成的步骤概要。`--events` 可省略；指定时创建新文件，不覆盖已有记录。单工具失败交给运维 Agent 作为证据限制，总超时、取消、模型失败和执行上限会终止任务。
 
-规划和执行模型可分别配置 `ONCALL_OPS_PLANNER_*`、`ONCALL_OPS_EXECUTOR_*`，未设置字段继承 `ONCALL_CHAT_MODEL_*`，显式空值报错。更慢的模型可通过专用 `TIMEOUT` 调整单次调用预算；总预算仍独立生效。只初始化启用工具需要的依赖，CLS 沿用 stdio MCP，不新增 SDK 依赖。
+规划和执行模型可分别配置 `ONCALL_OPS_PLANNER_*`、`ONCALL_OPS_EXECUTOR_*`，未设置字段继承 `ONCALL_CHAT_MODEL_*`，显式空值报错。更慢的模型可通过专用 `TIMEOUT` 调整单次调用预算；总预算仍独立生效。只初始化启用工具需要的依赖。
 
 结构图、完整配置、事件示例、本地模拟命令和真实联调结果见 [第 10 步文档](docs/stage-10.md)。
 

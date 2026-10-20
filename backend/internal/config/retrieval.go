@@ -41,7 +41,6 @@ type Tools struct {
 	QueryInternalDocsEnabled     bool
 	GetCurrentTimeEnabled        bool
 	QueryPrometheusAlertsEnabled bool
-	QueryLogEnabled              bool
 	TimeZone                     string
 }
 
@@ -56,9 +55,6 @@ func LoadTools() (Tools, error) {
 	}
 	if c.QueryPrometheusAlertsEnabled, err = strconv.ParseBool(env("ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED", "false")); err != nil {
 		return c, fmt.Errorf("ONCALL_TOOLS_QUERY_PROMETHEUS_ALERTS_ENABLED must be a boolean")
-	}
-	if c.QueryLogEnabled, err = strconv.ParseBool(env("ONCALL_TOOLS_QUERY_LOG_ENABLED", "false")); err != nil {
-		return c, fmt.Errorf("ONCALL_TOOLS_QUERY_LOG_ENABLED must be a boolean")
 	}
 	return c, c.Validate()
 }
