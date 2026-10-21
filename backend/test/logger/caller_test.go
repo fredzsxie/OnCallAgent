@@ -20,14 +20,14 @@ func assertCaller(t *testing.T, output string, lines ...int) {
 	t.Helper()
 	matched := false
 	for _, line := range lines {
-		if strings.Contains(output, fmt.Sprintf("[test/logger/caller_test.go:%d]", line)) {
+		if strings.Contains(output, fmt.Sprintf("(test/logger/caller_test.go:%d)", line)) {
 			matched = true
 		}
 	}
 	if !matched {
 		t.Fatalf("expected caller lines %v, got %s", lines, output)
 	}
-	for _, bad := range []string{"[utility/logger/", "github.com/", "/Users/", "/home/", "unknown:0"} {
+	for _, bad := range []string{"(utility/logger/", "github.com/", "/Users/", "/home/", "unknown:0"} {
 		if strings.Contains(output, bad) {
 			t.Fatalf("unexpected caller path %q: %s", bad, output)
 		}
@@ -159,7 +159,7 @@ func main(){ctx,logs,err:=logger.Bootstrap(context.Background(),true);if err!=ni
 	if err != nil {
 		t.Fatalf("external caller: %v %s", err, output)
 	}
-	if !strings.Contains(string(output), "[unknown:0] outside module") || strings.Contains(string(output), directory) {
+	if !strings.Contains(string(output), "(unknown:0) --> outside module") || strings.Contains(string(output), directory) {
 		t.Fatalf("unsafe fallback: %s", output)
 	}
 }

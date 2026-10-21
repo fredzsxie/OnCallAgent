@@ -69,7 +69,7 @@ func TestStartupRouteTablePreservesAPIInformation(t *testing.T) {
 					t.Fatalf("missing %q in %s", want, output)
 				}
 			}
-			if strings.Count(output, "[utility/middleware/routes.go:") != 1 {
+			if strings.Count(output, "(utility/middleware/routes.go:") != 1 {
 				t.Fatal("route caller must appear only on table heading", output)
 			}
 			for _, skip := range []string{"HookBeforeServe", "HookAfterOutput", "ObserveHTTP", "/*"} {

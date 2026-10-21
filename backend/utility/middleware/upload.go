@@ -34,7 +34,7 @@ func UploadBody(maxBytes int64) ghttp.HandlerFunc {
 		defer func() {
 			if r.MultipartForm != nil {
 				if err := r.MultipartForm.RemoveAll(); err != nil {
-					logger.Warn(r.Context(), "Upload", "临时文件清理失败", logger.F("code", logger.Code(err)))
+					logger.Warn(r.Context(), "Upload", "临时文件清理失败", logger.F("error_type", logger.ErrorType(err)))
 				}
 			}
 		}()

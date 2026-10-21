@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -288,5 +289,33 @@ func TestCLITotalTimeout(t *testing.T) {
 	out, stderr, err := invoke(t, env, "--query", "wait")
 	if err == nil || out != "" || !strings.Contains(stderr, "context deadline exceeded") || time.Since(start) > 3*time.Second {
 		t.Fatalf("timeout: %v %s %s duration=%v", err, out, stderr, time.Since(start))
+	}
+}
+
+func TestCLILogsCurrentInputWithoutHistoryOrAnswer(t *testing.T) {
+	query := "  中文问题\n\"quoted\"\\path\t  "
+	input, _ := json.Marshal(map[string]any{"id": " cli-session ", "query": query, "history": []*schema.Message{schema.UserMessage("private-history")}})
+	cmd := command(t, fixtures(t), "--input", string(input))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil || stderr.Len() != 0 || !json.Valid(stdout.Bytes()) {
+		t.Fatal(err, stderr.String())
+	}
+	files, _ := filepath.Glob(filepath.Join(cmd.Dir, "log", "oncall-*.log"))
+	if len(files) != 1 {
+		t.Fatal("missing log")
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := string(data)
+	if strings.Count(logs, "用户请求") != 1 || !strings.Contains(logs, "Id="+strconv.QuoteToGraphic(" cli-session ")) || strings.Count(logs, "Question="+strconv.QuoteToGraphic(query)) != 1 {
+		t.Fatal("current input missing or duplicated", logs)
+	}
+	for _, secret := range []string{"private-history", "fixture-only", "Refresh keys", "auth.md"} {
+		if strings.Contains(logs, secret) {
+			t.Fatal("private content logged", secret)
+		}
 	}
 }

@@ -79,7 +79,7 @@ func (s *sink) write(line, level string, color bool) {
 		if err != nil && !s.warned {
 			s.warned = true
 			if s.console != nil {
-				_, _ = io.WriteString(s.console, format(s.now(), "ERROR", "Logger", caller(), "日志文件写入失败，请检查磁盘与权限", []Field{F("code", "log_write_failed")}))
+				_, _ = io.WriteString(s.console, format(s.now(), "ERROR", "Logger", caller(), "日志文件写入失败，请检查磁盘与权限", []Field{F("error_type", "log_write_failed")}))
 			}
 		}
 	}

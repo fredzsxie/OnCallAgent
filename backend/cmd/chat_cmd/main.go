@@ -118,6 +118,9 @@ func run() error {
 		return err
 	}
 	defer logs.Close()
+	if hasInput {
+		logger.Info(ctx, "Chat", "用户请求", logger.F("Id", message.ID), logger.F("Question", message.Query))
+	}
 	modelClient, err := client.NewOpenAI(ctx, modelCfg)
 	if err != nil {
 		return err

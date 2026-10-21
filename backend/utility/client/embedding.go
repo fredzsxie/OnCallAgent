@@ -76,6 +76,10 @@ func (c *Embedding) EmbedStrings(ctx context.Context, texts []string, opts ...em
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		// The HTTP deadline may fire before the context timer is observed.
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, context.DeadlineExceeded
+		}
 		// Do not expose provider errors, which may contain input or credentials.
 		return nil, errors.New("embedding request failed")
 	}

@@ -35,12 +35,15 @@ func service(t *testing.T, agent aiops.Agent, budget time.Duration) *aiops.AIOps
 	return s
 }
 
-func startOpsAPI(t *testing.T, s *aiops.AIOpsService) string {
+func startOpsAPI(t *testing.T, s *aiops.AIOpsService, roots ...context.Context) string {
 	t.Helper()
 	server := ghttp.GetServer("ops-http-" + guid.S())
 	server.SetDumpRouterMap(false)
 	server.SetAccessLogEnabled(false)
 	server.SetErrorLogEnabled(false)
+	if len(roots) > 0 {
+		middleware.ObserveHTTP(server, roots[0])
+	}
 	server.Group("/api", func(g *ghttp.RouterGroup) {
 		g.Middleware(middleware.ResponseMiddleware)
 		g.Bind(controller.NewAIOpsV1(s))

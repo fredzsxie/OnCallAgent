@@ -46,21 +46,21 @@ func ObserveHTTP(s *ghttp.Server, root context.Context) {
 		if err == nil {
 			err = r.GetError()
 		}
-		fields := []logger.Field{logger.F("method", r.Method), logger.F("route", route(r)), logger.F("status", r.Response.Status), logger.F("elapsed", time.Since(obs.started))}
-		code, outcome := "", "success"
+		fields := []logger.Field{logger.F("method", r.Method), logger.F("route", route(r)), logger.F("code", r.Response.Status), logger.F("elapsed", time.Since(obs.started))}
+		errorType, outcome := "", "success"
 		if err != nil {
-			code, outcome = responseCode(err), "failed"
+			errorType, outcome = responseErrorType(err), "failed"
 		}
 		if errors.Is(err, context.Canceled) || r.Context().Err() == context.Canceled {
-			code, outcome = "cancelled", "cancelled"
+			errorType, outcome = "cancelled", "cancelled"
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			code, outcome = "timeout", "timeout"
+			errorType, outcome = "timeout", "timeout"
 		}
-		if r.Response.Status >= 400 && code == "" {
-			code, outcome = "http_error", "failed"
+		if r.Response.Status >= 400 && errorType == "" {
+			errorType, outcome = "http_error", "failed"
 		}
-		fields = append(fields, logger.F("outcome", outcome), logger.F("code", code))
+		fields = append(fields, logger.F("outcome", outcome), logger.F("error_type", errorType))
 		log, message := logger.Info, "请求完成"
 		if outcome != "success" {
 			message = "请求未完成"
@@ -96,8 +96,8 @@ func route(r *ghttp.Request) string {
 	return "<unmatched>"
 }
 
-func responseCode(err error) string {
-	if code := logger.Code(err); code != "execution_failed" {
+func responseErrorType(err error) string {
+	if code := logger.ErrorType(err); code != "execution_failed" {
 		return code
 	}
 	status, body := ErrorResponse(err)

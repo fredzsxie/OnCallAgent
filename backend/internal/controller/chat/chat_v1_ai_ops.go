@@ -7,6 +7,7 @@ import (
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/chat/v1"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"mime"
 )
@@ -25,6 +26,7 @@ func (c *AIOpsController) AIOps(ctx context.Context, _ *v1.AIOpsReq) (*v1.AIOpsR
 			return nil, aiops.Wrap(pipeline.ErrInvalidInput, nil)
 		}
 	}
+	logger.Info(ctx, "Ops", "用户请求", logger.F("request", "{}"))
 	if c.service == nil {
 		return nil, aiops.Wrap(aiops.ErrInitialization, nil)
 	}

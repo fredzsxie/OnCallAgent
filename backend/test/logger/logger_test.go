@@ -54,12 +54,12 @@ func TestReadableFormatColorAndFileRetention(t *testing.T) {
 	ctx, l := testLogger(t, cfg, logger.Options{Console: &console, Color: true, Now: func() time.Time { return fixed }})
 	ctx, id := logger.WithRequest(ctx)
 	_, _, line, _ := runtime.Caller(0)
-	logger.Info(ctx, "HTTP", "请求完成", logger.F("status", 200), logger.F("elapsed", 2130*time.Millisecond), logger.F("empty", ""), logger.F("bad\nkey", "secret"))
+	logger.Info(ctx, "HTTP", "请求完成", logger.F("code", 200), logger.F("elapsed", 2130*time.Millisecond), logger.F("empty", ""), logger.F("bad\nkey", "secret"))
 	file, err := os.ReadFile(filepath.Join(dir, "oncall-2026-10-21.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"2026-10-21 14:30:00.125 +08:00 INFO", fmt.Sprintf("[HTTP  ] [test/logger/logger_test.go:%d] 请求完成", line+1), "req=" + id, "status=200", "elapsed=2.13s"} {
+	for _, want := range []string{"2026-10-21 14:30:00.125 +08:00 INFO", fmt.Sprintf("[HTTP](test/logger/logger_test.go:%d) --> 请求完成", line+1), "req=" + id, "code=200", "elapsed=2.13s"} {
 		if !strings.Contains(string(file), want) {
 			t.Fatalf("missing %q in %s", want, file)
 		}
@@ -76,7 +76,7 @@ func TestReadableFormatColorAndFileRetention(t *testing.T) {
 		}
 	}
 	fixed = fixed.Add(24 * time.Hour)
-	logger.Warn(ctx, "Tool", "工具失败", logger.F("code", "upstream_error"))
+	logger.Warn(ctx, "Tool", "工具失败", logger.F("error_type", "upstream_error"))
 	if _, err := os.Stat(filepath.Join(dir, "oncall-2026-10-22.log")); err != nil {
 		t.Fatal("date rotation failed", err)
 	}
@@ -100,7 +100,7 @@ func TestLevelEscapingAndSafeErrors(t *testing.T) {
 	if strings.Count(out.String(), "\n") != 2 || strings.Contains(out.String(), "不得出现") || strings.Contains(out.String(), "private-key") || strings.Contains(out.String(), "raw_error=") || strings.Contains(out.String(), "password") || strings.Contains(out.String(), "\x1b") {
 		t.Fatal("unsafe log", out.String())
 	}
-	for _, want := range []string{`\nforged\x1b[31m`, `code=execution_failed`, `WARN`, `code=cancelled`} {
+	for _, want := range []string{`\nforged\x1b[31m`, `error_type=execution_failed`, `WARN`, `error_type=cancelled`} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatal("missing", want, out.String())
 		}

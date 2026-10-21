@@ -23,15 +23,15 @@ func (t observedTool) InvokableRun(ctx context.Context, input string, opts ...to
 	defer func() {
 		fields := []logger.Field{logger.F("tool", t.name), logger.F("elapsed", time.Since(started))}
 		if err != nil {
-			code := logger.Code(err)
+			errorType := logger.ErrorType(err)
 			var failure *operations.Error
 			if errors.As(err, &failure) {
-				code = failure.Code
+				errorType = failure.Code
 			}
 			if errors.Is(err, retriever.ErrInvalidQuery) {
-				code = "invalid_input"
+				errorType = "invalid_input"
 			}
-			logger.Warn(ctx, "Tool", "工具执行失败", append(fields, logger.F("code", code))...)
+			logger.Warn(ctx, "Tool", "工具执行失败", append(fields, logger.F("error_type", errorType))...)
 			return
 		}
 		var result map[string]json.RawMessage

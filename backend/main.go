@@ -219,6 +219,6 @@ func run() (err error) {
 
 // Configuration loaders return validation messages without interpolating configured values.
 func configurationFailure(ctx context.Context, err error) error {
-	logger.Error(ctx, "Config", "配置校验失败", logger.F("code", "invalid_configuration"), logger.F("reason", err.Error()))
+	logger.Error(ctx, "Config", "配置校验失败", logger.F("error_type", "invalid_configuration"), logger.F("reason", err.Error()))
 	return err
 }

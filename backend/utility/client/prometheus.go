@@ -38,11 +38,11 @@ func (p *Prometheus) Alerts(ctx context.Context) (out operations.AlertsResult, e
 		fields := []logger.Field{logger.F("elapsed", time.Since(started))}
 		if err != nil {
 			var failure *operations.Error
-			code := logger.Code(err)
+			errorType := logger.ErrorType(err)
 			if errors.As(err, &failure) {
-				code = failure.Code
+				errorType = failure.Code
 			}
-			logger.Warn(ctx, "Prom", "告警查询失败", append(fields, logger.F("code", code))...)
+			logger.Warn(ctx, "Prom", "告警查询失败", append(fields, logger.F("error_type", errorType))...)
 		} else {
 			logger.Info(ctx, "Prom", "告警查询完成", append(fields, logger.F("count", len(out.Alerts)))...)
 		}

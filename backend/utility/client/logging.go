@@ -51,21 +51,21 @@ func (t *observedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if response.StatusCode >= 400 {
 		log = logger.Warn
 	}
-	code := ""
+	errorType := ""
 	switch {
 	case response.StatusCode == 401 || response.StatusCode == 403:
-		code = "authentication_failed"
+		errorType = "authentication_failed"
 	case response.StatusCode == 429:
-		code = "rate_limited"
+		errorType = "rate_limited"
 	case response.StatusCode >= 500:
-		code = "upstream_error"
+		errorType = "upstream_error"
 	case response.StatusCode >= 400:
-		code = "invalid_request"
+		errorType = "invalid_request"
 	case response.StatusCode >= 300:
-		code = "redirect_rejected"
+		errorType = "redirect_rejected"
 		log = logger.Warn
 	}
-	log(r.Context(), t.component, "收到上游响应头", logger.F("role", t.role), logger.F("status", response.StatusCode), logger.F("code", code), logger.F("headers_elapsed", time.Since(started)))
+	log(r.Context(), t.component, "收到上游响应头", logger.F("role", t.role), logger.F("code", response.StatusCode), logger.F("error_type", errorType), logger.F("headers_elapsed", time.Since(started)))
 	response.Body = &observedBody{ReadCloser: response.Body, ctx: r.Context(), component: t.component, role: t.role, started: started, status: response.StatusCode}
 	return response, nil
 }
@@ -105,9 +105,9 @@ func (b *observedBody) finish(outcome string, err error) {
 	b.once.Do(func() {
 		if b.ctx.Err() != nil {
 			err = b.ctx.Err()
-			outcome = logger.Code(err)
+			outcome = logger.ErrorType(err)
 		}
-		fields := []logger.Field{logger.F("role", b.role), logger.F("status", b.status), logger.F("outcome", outcome), logger.F("elapsed", time.Since(b.started))}
+		fields := []logger.Field{logger.F("role", b.role), logger.F("code", b.status), logger.F("outcome", outcome), logger.F("elapsed", time.Since(b.started))}
 		if err != nil {
 			logger.Failure(b.ctx, b.component, "上游响应读取失败", err, fields...)
 			return

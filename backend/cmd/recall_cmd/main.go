@@ -79,6 +79,16 @@ func run() error {
 		return err
 	}
 	defer logs.Close()
+	if set["query"] {
+		logger.Info(ctx, "RAG", "用户检索", logger.F("query", *query))
+	} else if *name == tools.QueryInternalDocs {
+		var args struct {
+			Query string `json:"query"`
+		}
+		if json.Unmarshal([]byte(*input), &args) == nil {
+			logger.Info(ctx, "RAG", "用户检索", logger.F("query", args.Query))
+		}
+	}
 	var toolsCfg config.Tools
 	if *list || set["tool"] {
 		var err error

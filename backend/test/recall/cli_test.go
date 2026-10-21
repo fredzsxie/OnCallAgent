@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -144,4 +145,40 @@ func TestCLISignalCancelsMilvusConnection(t *testing.T) {
 	case <-time.After(4 * time.Second):
 		t.Fatal("SIGTERM did not cancel connection")
 	}
+}
+
+func TestCLILogsUserQueryBeforeDependencyInitialization(t *testing.T) {
+	query := "  检索问题\n\"quoted\"\t  "
+	for _, args := range [][]string{{"--query", query}, {"--tool", "query_internal_docs", "--input", string(mustJSONQuery(t, query))}} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, binary, args...)
+		cmd.Dir = t.TempDir()
+		cmd.Env = environment("ONCALL_EMBEDDING_BASE_URL=")
+		var out, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &stderr
+		err := cmd.Run()
+		cancel()
+		if err == nil || out.Len() != 0 || !strings.Contains(stderr.String(), "ONCALL_EMBEDDING_BASE_URL") {
+			t.Fatal("expected safe configuration failure", err, stderr.String())
+		}
+		files, _ := filepath.Glob(filepath.Join(cmd.Dir, "log", "oncall-*.log"))
+		if len(files) != 1 {
+			t.Fatal("missing log")
+		}
+		data, err := os.ReadFile(files[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(string(data), "用户检索") != 1 || strings.Count(string(data), "query="+strconv.QuoteToGraphic(query)) != 1 {
+			t.Fatal("query missing or duplicated", string(data))
+		}
+	}
+}
+func mustJSONQuery(t *testing.T, query string) []byte {
+	t.Helper()
+	data, err := json.Marshal(map[string]string{"query": query})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

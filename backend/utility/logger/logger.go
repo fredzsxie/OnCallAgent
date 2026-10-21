@@ -184,7 +184,7 @@ func Digest(value string) string {
 }
 
 // Classify errors without formatting provider messages, URLs, bodies or credentials.
-func Code(err error) string {
+func ErrorType(err error) string {
 	if err == nil {
 		return "success"
 	}
@@ -223,22 +223,22 @@ func Code(err error) string {
 }
 
 func Failure(ctx context.Context, component, message string, err error, fields ...Field) {
-	code := Code(err)
+	errorType := ErrorType(err)
 	found := false
 	for _, field := range fields {
-		if field.Key == "code" {
+		if field.Key == "error_type" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		fields = append(fields, F("code", code))
+		fields = append(fields, F("error_type", errorType))
 	}
 	reasons := map[string]string{"cancelled": "请求已取消", "timeout": "执行超时", "network_error": "网络连接失败", "permission_denied": "权限不足", "not_found": "资源不存在", "unavailable": "依赖不可用", "authentication_failed": "认证失败", "invalid_input": "输入无效", "execution_failed": "调用未完成"}
-	if reason := reasons[code]; reason != "" {
+	if reason := reasons[errorType]; reason != "" {
 		message += "：" + reason
 	}
-	if code == "cancelled" {
+	if errorType == "cancelled" {
 		Warn(ctx, component, message, fields...)
 		return
 	}
@@ -257,7 +257,7 @@ func Finish(ctx context.Context, component, message string, started time.Time, e
 
 func format(now time.Time, level, component, position, message string, fields []Field) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %-5s [%-6s] [%s] %s", now.Format("2006-01-02 15:04:05.000 -07:00"), level, escape(component), escape(position), escape(message))
+	fmt.Fprintf(&b, "%s %-5s [%s](%s) --> %s", now.Format("2006-01-02 15:04:05.000 -07:00"), level, escape(component), escape(position), escape(message))
 	first := true
 	for _, f := range fields {
 		if f.Key == "" || strings.IndexFunc(f.Key, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' }) >= 0 {

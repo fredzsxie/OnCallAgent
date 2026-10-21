@@ -80,18 +80,24 @@ Web 服务和独立模型检查命令都会在读取配置前自动加载 `.env`
 配置继续遵循进程环境变量 > `.env` > 默认值，显式空值报错。启动时检查日志目录可写性；在启动和下一次跨日写入时清理到期文件，仅处理当前目录中名称严格匹配的 `oncall-YYYY-MM-DD.log` 常规文件。终端为交互设备时级别带颜色，文件与重定向输出不含颜色；设置 `NO_COLOR=1` 可关闭终端颜色。运行期间文件写入失败不会改变业务响应，Web 会向 stderr 输出一次安全提示。
 
 ```text
-2026-10-21 14:30:00.125 +08:00 INFO  [HTTP  ] [utility/middleware/logging.go:38] 请求开始 | req=示例请求ID method=POST route=/api/chat
-2026-10-21 14:30:00.390 +08:00 INFO  [RAG   ] [internal/ai/retriever/retriever.go:57] 知识检索完成 | req=示例请求ID top_k=3 score_threshold=0.5 documents=2 elapsed=265ms
-2026-10-21 14:30:02.255 +08:00 INFO  [HTTP  ] [utility/middleware/logging.go:72] 请求完成 | req=示例请求ID method=POST route=/api/chat status=200 elapsed=2.13s outcome=success
+2026-10-21 14:30:00.125 +08:00 INFO  [HTTP](utility/middleware/logging.go:38) --> 请求开始 | req=示例请求ID method=POST route=/api/chat
+2026-10-21 14:30:00.130 +08:00 INFO  [Chat](internal/controller/chat/chat_v1_chat.go:11) --> 用户请求 | req=示例请求ID Id=demo Question="认证失败后如何恢复？\n请给出步骤。"
+2026-10-21 14:30:00.390 +08:00 INFO  [RAG](internal/ai/retriever/retriever.go:57) --> 知识检索完成 | req=示例请求ID top_k=3 score_threshold=0.5 documents=2 elapsed=265ms
+2026-10-21 14:30:02.255 +08:00 INFO  [HTTP](utility/middleware/logging.go:72) --> 请求完成 | req=示例请求ID method=POST route=/api/chat code=200 elapsed=2.13s outcome=success
+2026-10-21 14:31:00.255 +08:00 ERROR [HTTP](utility/middleware/logging.go:72) --> 请求未完成 | req=流式请求ID method=POST route=/api/chat_stream code=200 elapsed=60s outcome=timeout error_type=timeout
 ```
 
 所有级别日志均显示相对 `backend/` 的代码路径与行号（上述行号为格式示意）。统一跳过日志封装与框架自身，直接调用、`Failure`、`Finish`、defer 闭包和 goroutine 均定位到实际业务调用点；直接 defer 在编译器优化下可能指向执行它的 return 行。位置表示日志输出时的调用点，不等同于异常最初发生的位置。普通构建和 `-trimpath` 构建使用相同相对路径；无法解析时显示 `unknown:0`，不输出绝对路径。日志级别过滤先于位置解析。启动路由表只在标题显示代码位置，五列表格保持原样。
 
 每次 HTTP 请求生成完整关联 ID，返回 `X-Request-ID`，调用链日志显示 `req=...`；客户端传入的同名 Header 不覆盖服务端 ID。CLI 使用独立 `run=...`。已有有效 trace ID 时附加 `trace=...`。日志覆盖路由、请求结果、会话锁等待、历史提交、上传保存与入库阶段、检索、模型/Embedding、Milvus、Prometheus、工具和运维迭代。上游 `headers_elapsed` 仅表示收到响应头的耗时，完整模型生成或图执行另行记录。
 
+日志中 `code` 仅表示已收到或已返回的真实 HTTP 数值状态码，如 `200`、`401`、`503`；连接前和无上游响应时省略。错误类别使用 `error_type=timeout/authentication_failed/...`。HTTP 日志不再重复输出数值 `status`；运维步骤仍保留 `status=completed/failed`。API 响应与 CLI 错误 JSON 中的字符串 `code` 保持原契约。
+
 SSE 不逐 token 打印，结束时记录片段数和字节数。即使 HTTP 状态为 200，失败、超时和取消仍会在请求终止日志中标为 `outcome=failed/timeout/cancelled`；不会将连接建立误记为回答成功。INFO 保留关键结果；DEBUG 增加批次、响应读取结束、连接关闭、历史过期和健康检查；可恢复工具失败和取消使用 WARN，终止错误使用 ERROR。
 
-不记录密钥、认证 Header、URL 查询参数、问题/回答、历史正文、文档正文、完整工具结果、思维链和服务器绝对文件路径。会话和文件来源使用稳定摘要；错误仅记录安全类别、阶段和上游状态，不直接打印原始依赖错误。日志字段中的换行、终端控制符均转义。
+普通聊天与 SSE 在控制器取得已解析请求后，各记录一次完整 `Id` 和 `Question`；保留原始空白、中文和全文，不截断。AI Ops 记录固定请求 `request={}`，业务入口记录实际 `query`；聊天、运维和检索 CLI 记录本次用户提供的 ID、问题或查询。解析或校验失败的请求仅记录安全错误，不倾倒原始请求体。上传记录原始文件名、大小和格式，不记录文件正文。
+
+不记录密钥、认证 Header、URL 查询参数、模型回答、历史正文、文档正文、模型提示词、完整工具结果、思维链和服务器绝对文件路径。内部会话与文件来源仍使用稳定摘要。错误仅记录安全类别、阶段和上游状态，不直接打印原始依赖错误。日志中的换行、引号、反斜杠与控制字符均转义，保证请求正文不会拆成多条日志。
 
 以下命令在 `backend/` 中执行：
 
@@ -105,20 +111,27 @@ curl -i http://127.0.0.1:6872/api/chat \
 # 将完整响应 ID 替换到下方命令
 rg 'req=完整请求ID' log/
 rg 'ERROR|WARN' log/
+rg 'code=401|code=503|error_type=timeout' log/
+rg '用户请求|用户检索|用户上传' log/
 tail -f log/oncall-*.log
 
 # 需要批次、连接及健康检查细节时重启服务
 ONCALL_LOG_LEVEL=debug GOTOOLCHAIN=local go run .
 
-# 日志专项测试
+# 日志及请求内容专项测试
 GOTOOLCHAIN=local go test ./test/logger ./test/config ./test/operations ./test/ops
+# 全量回归、竞态检查、静态检查及入口构建
+GOTOOLCHAIN=local go test ./...
+GOTOOLCHAIN=local go test -race ./...
+GOTOOLCHAIN=local go vet ./...
+GOTOOLCHAIN=local go build ./...
 # 验证移除编译路径后仍能输出正确的相对位置
 GOTOOLCHAIN=local go test -trimpath ./test/logger
 ```
 
 本地验收同时验证普通及 `-trimpath` 构建下各级别、包装函数、defer、goroutine 的调用位置，终端与文件位置一致，外部代码无法定位时安全回退到 `unknown:0`。
 
-本次本地验收已验证真实 GoFrame → ChatAgent → 模型 SDK 的关联日志、SSE 失败/取消/超时与写出失败、知识入库阶段、ADK 事件脱敏、文件清理和 CLI JSON 兼容性。复用现有 Postman 模拟完成聊天与运维调用测试；模拟请求有实际依赖调用记录。真实云端集成未执行，不能将本地模拟结果视为云端通过。
+本次本地验收覆盖完整请求单次记录、中文及控制字符转义、HTTP 数值状态码、401 认证失败、无响应时省略状态码，以及真实 GoFrame → ChatAgent → 模型 SDK 的关联日志、SSE 失败/取消/超时与写出失败、知识入库阶段、ADK 事件脱敏、文件清理和 CLI JSON 兼容性。复用现有 Postman 模拟完成聊天与运维调用测试；本轮模拟记录了 61 次实际依赖请求。全量 Go 测试、全量竞态检测、`go vet`、全部入口构建与 `-trimpath` 日志测试通过；验收中修正了 HTTP deadline 先于 context 定时器触发时 Embedding 超时被归为普通失败的边界，并重复验证超时用例 50 次。真实云端集成未执行，不能将本地模拟结果视为云端通过。
 
 复现本地 Postman 验收：在项目根目录启动 `postman simulation run backend/test/frontend/stage11.sim.yaml --port 4963 --output ndjson`；另一终端进入 `backend/` 后执行：
 

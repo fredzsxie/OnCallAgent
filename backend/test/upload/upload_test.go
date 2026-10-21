@@ -19,17 +19,21 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/util/guid"
 )
 
-func startAPI(t *testing.T, service *knowledge.KnowledgeService, max int64) string {
+func startAPI(t *testing.T, service *knowledge.KnowledgeService, max int64, roots ...context.Context) string {
 	t.Helper()
 	server := ghttp.GetServer("upload-test-" + guid.S())
 	server.SetDumpRouterMap(false)
 	server.SetAccessLogEnabled(false)
 	server.SetErrorLogEnabled(false)
+	if len(roots) > 0 {
+		middleware.ObserveHTTP(server, roots[0])
+	}
 	server.SetClientMaxBodySize(max + middleware.MultipartOverhead)
 	server.Group("/api", func(group *ghttp.RouterGroup) {
 		group.Middleware(middleware.ResponseMiddleware)
@@ -221,8 +225,8 @@ func TestUploadRetryableErrors(t *testing.T) {
 			api := localAPI(t, tc.store, 128)
 			body := uploadFile(t, api, "a.md", "valid document", tc.status)
 			var data struct {
-				Retryable bool `json:"retryable"`
- Stage string `json:"stage"`
+				Retryable bool   `json:"retryable"`
+				Stage     string `json:"stage"`
 			}
 			if err := json.Unmarshal(body.Data, &data); err != nil || !data.Retryable || data.Stage != "ingest" {
 				t.Fatalf("not retryable: %s", body.Data)
@@ -268,5 +272,46 @@ func TestUploadPropagatesCancellation(t *testing.T) {
 	}
 	if len(store.Snapshot()) != 0 {
 		t.Fatal("cancelled upload stored chunks")
+	}
+}
+
+func TestUploadLogsOriginalFileMetadataOnly(t *testing.T) {
+	dir := t.TempDir()
+	logs, err := logger.New(config.Logging{Level: "info", Dir: dir, FileEnabled: true, RetentionDays: 7}, logger.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logs.Close()
+	cfg := config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: 4096, ChunkSize: 40, ChunkOverlap: 5, BatchSize: 2}
+	service, err := testutil.NewKnowledgeService(cfg, &testutil.MemoryStore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := startAPI(t, service, 4096, logger.WithLogger(context.Background(), logs))
+	content := "private-upload-file-content"
+	request := multipartRequest(t, url, []string{"运维 手册.md"}, []string{"file"}, []string{content})
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatal(response.StatusCode)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "oncall-*.log"))
+	if len(files) != 1 {
+		t.Fatal("missing log")
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Count(text, "用户上传") != 1 || !strings.Contains(text, `file_name="运维 手册.md" size=27 format=.md`) {
+		t.Fatal("missing upload metadata", text)
+	}
+	if strings.Contains(text, content) || strings.Contains(text, cfg.FileDir) {
+		t.Fatal("upload body or storage path logged")
 	}
 }

@@ -47,7 +47,7 @@ func (s *AIOpsService) Analyze(ctx context.Context) (*pipeline.Result, error) {
 
 func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink func(pipeline.Event) error) (*pipeline.Result, error) {
 	started := time.Now()
-	logger.Info(ctx, "Ops", "开始运维分析", logger.F("timeout", s.timeout))
+	logger.Info(ctx, "Ops", "开始运维分析", logger.F("timeout", s.timeout), logger.F("query", query))
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return &pipeline.Result{Detail: []pipeline.Event{}}, Wrap(pipeline.ErrInvalidInput, nil)
@@ -72,7 +72,7 @@ func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink fun
 	}
 	if err != nil {
 		result.Report = ""
-		logger.Failure(ctx, "Ops", "运维分析失败", err, logger.F("code", pipeline.ErrorCode(err)), logger.F("events", len(result.Detail)), logger.F("elapsed", time.Since(started)))
+		logger.Failure(ctx, "Ops", "运维分析失败", err, logger.F("error_type", pipeline.ErrorCode(err)), logger.F("events", len(result.Detail)), logger.F("elapsed", time.Since(started)))
 		return result, Wrap(err, result.Detail)
 	}
 	failures := 0

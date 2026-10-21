@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -127,9 +129,13 @@ func loggedAPI(t *testing.T, root context.Context, base string, wraps ...func(ht
 	return "http://" + listener.Addr().String(), server
 }
 
-func post(t *testing.T, url, question string) (int, string, string) {
+func post(t *testing.T, url, question string, sessions ...string) (int, string, string) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"Id": "private-session-id", "Question": question})
+	session := "private-session-id"
+	if len(sessions) > 0 {
+		session = sessions[0]
+	}
+	body, _ := json.Marshal(map[string]string{"Id": session, "Question": question})
 	response, err := http.Post(url, "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
@@ -172,6 +178,7 @@ func exerciseHTTP(t *testing.T, base string) {
 	}{
 		{"chat", "private-question-body", "success", 200},
 		{"chat", "__error__", "failed", 502},
+		{"chat", "__timeout__", "timeout", 504},
 		{"chat", "", "failed", 400},
 		{"chat_stream", "private-question-body", "success", 200},
 		{"chat_stream", "__error__", "failed", 200},
@@ -185,8 +192,19 @@ func exerciseHTTP(t *testing.T, base string) {
 			}
 			await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome="+tc.outcome) })
 			lines := requestLines(logs.String(), id)
-			if !strings.Contains(lines, "请求开始") || !strings.Contains(lines, "status="+fmt.Sprint(tc.status)) {
+			if !strings.Contains(lines, "请求开始") || !strings.Contains(lines, "code="+fmt.Sprint(tc.status)) {
 				t.Fatal("missing boundary", lines)
+			}
+			if tc.query != "" {
+				if strings.Count(lines, "用户请求") != 1 || strings.Count(lines, "Question="+tc.query) != 1 || !strings.Contains(lines, "Id=private-session-id") {
+					t.Fatal("parsed request must be logged exactly once", lines)
+				}
+			} else if strings.Contains(lines, "用户请求") {
+				t.Fatal("invalid request body was logged", lines)
+			}
+			assertNumericHTTPCodes(t, lines)
+			if tc.path == "chat_stream" && tc.outcome != "success" && !strings.Contains(lines, "error_type=") {
+				t.Fatal("SSE failure missing error category", lines)
 			}
 			if tc.path == "chat_stream" {
 				if tc.outcome == "success" {
@@ -206,7 +224,7 @@ func exerciseHTTP(t *testing.T, base string) {
 	io.Copy(io.Discard, response.Body)
 	response.Body.Close()
 	id := response.Header.Get("X-Request-ID")
-	await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "status=404") })
+	await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "code=404") })
 	// Each request must carry its own ID through graph execution and the real SDK transport.
 	_, id, _ = post(t, url+"/api/chat", "private-question-body")
 	await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome=success") })
@@ -216,15 +234,96 @@ func exerciseHTTP(t *testing.T, base string) {
 			t.Fatal("missing correlated event", event, lines)
 		}
 	}
-	for _, position := range []string{"[utility/middleware/logging.go:", "[internal/service/chat/chat.go:", "[internal/ai/retriever/retriever.go:", "[internal/ai/agent/chat_pipeline/flow.go:", "[utility/client/logging.go:"} {
+	for _, position := range []string{"(utility/middleware/logging.go:", "(internal/service/chat/chat.go:", "(internal/ai/retriever/retriever.go:", "(internal/ai/agent/chat_pipeline/flow.go:", "(utility/client/logging.go:"} {
 		if !strings.Contains(lines, position) {
 			t.Fatal("missing business caller", position, lines)
 		}
 	}
-	for _, secret := range []string{"private-question-body", "private-answer-body", "private-document-body", "private-source.md", "private-api-key", "private-session-id", "private-provider-error", "private-path-secret", "private-query-key", "Authorization", "http://"} {
+	for _, secret := range []string{"private-answer-body", "private-document-body", "private-source.md", "private-api-key", "private-provider-error", "private-path-secret", "private-query-key", "Authorization", "http://"} {
 		if strings.Contains(logs.String(), secret) {
 			t.Fatal("sensitive content in logs", secret)
 		}
+	}
+}
+
+func assertNumericHTTPCodes(t *testing.T, logs string) {
+	t.Helper()
+	for _, match := range regexp.MustCompile(`(?:^|\s)code=([^\s]+)`).FindAllStringSubmatch(logs, -1) {
+		code, err := strconv.Atoi(match[1])
+		if err != nil || code < 100 || code > 599 {
+			t.Fatal("log code must be a real HTTP status", match[1])
+		}
+	}
+	if strings.Contains(logs, " status=") {
+		t.Fatal("HTTP log duplicated status", logs)
+	}
+}
+
+func TestCompleteParsedRequestsStaySingleLine(t *testing.T) {
+	upstream := localModel()
+	defer upstream.Close()
+	var logs capture
+	root, _ := testLogger(t, settings(), logger.Options{Console: &logs})
+	url, _ := loggedAPI(t, root, upstream.URL)
+	session := "  原始会话\n\"quoted\"  "
+	question := "  中文开头\n\"quoted\"\\path\t\x1b[31m " + strings.Repeat("完整正文", 1200) + "  "
+	for _, path := range []string{"chat", "chat_stream"} {
+		status, id, _ := post(t, url+"/api/"+path, question, session)
+		if status != 200 {
+			t.Fatal(status)
+		}
+		await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome=success") })
+		lines := requestLines(logs.String(), id)
+		if strings.Count(lines, "用户请求") != 1 || strings.Count(lines, "Question="+strconv.QuoteToGraphic(question)) != 1 || !strings.Contains(lines, "Id="+strconv.QuoteToGraphic(session)) || strings.Contains(lines, "\x1b") {
+			t.Fatal("request was truncated, duplicated or not escaped")
+		}
+		assertNumericHTTPCodes(t, lines)
+	}
+	response, err := http.Post(url+"/api/chat", "application/json", strings.NewReader(`{"Id":"invalid-body-marker","Question":`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	if response.StatusCode != 400 {
+		t.Fatal(response.StatusCode)
+	}
+	id := response.Header.Get("X-Request-ID")
+	await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome=failed") })
+	lines := requestLines(logs.String(), id)
+	if strings.Contains(lines, "用户请求") || strings.Contains(logs.String(), "invalid-body-marker") {
+		t.Fatal("unparsed request was logged", lines)
+	}
+	assertNumericHTTPCodes(t, lines)
+}
+
+func TestUpstreamHTTPCodesAndNoResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		io.WriteString(w, "private-auth-error-body")
+	}))
+	var logs capture
+	ctx, _ := testLogger(t, settings(), logger.Options{Console: &logs})
+	prom, err := client.NewPrometheus(config.ToolHTTP{URL: upstream.URL, Auth: config.HTTPAuth{Type: "bearer", BearerToken: "private-bearer"}, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prom.Close()
+	if _, err := prom.Alerts(ctx); err == nil {
+		t.Fatal("expected authentication failure")
+	}
+	if !strings.Contains(logs.String(), "code=401 error_type=authentication_failed") || strings.Contains(logs.String(), "private-") {
+		t.Fatal("missing status or unsafe upstream error", logs.String())
+	}
+	assertNumericHTTPCodes(t, logs.String())
+	upstream.Close()
+	before := len(logs.String())
+	if _, err := prom.Alerts(ctx); err == nil {
+		t.Fatal("expected connection failure")
+	}
+	failed := logs.String()[before:]
+	if strings.Contains(failed, " code=") || !strings.Contains(failed, "error_type=") {
+		t.Fatal("connection failure invented an HTTP status", failed)
 	}
 }
 
@@ -275,6 +374,7 @@ func TestHTTPConcurrentIDsAndCancellation(t *testing.T) {
 	cancel()
 	response.Body.Close()
 	await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome=cancelled") })
+	assertNumericHTTPCodes(t, requestLines(logs.String(), id))
 	if !strings.Contains(requestLines(logs.String(), id), "history_committed=false") {
 		t.Fatal("cancelled stream committed history")
 	}
@@ -346,6 +446,7 @@ func TestSSEWriteAndInitializationFailureLogs(t *testing.T) {
 				t.Fatal(status, body)
 			}
 			await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome=failed") })
+			assertNumericHTTPCodes(t, requestLines(logs.String(), id))
 			if strings.Contains(body, "event: done") || !strings.Contains(requestLines(logs.String(), id), "history_committed=false") {
 				t.Fatal("write failure reported success", body, logs.String())
 			}
