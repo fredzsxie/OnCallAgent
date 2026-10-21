@@ -76,6 +76,9 @@ func NewRegistry(cfg config.Tools, deps Dependencies) (*Registry, error) {
 		}
 		registry.tools[QueryPrometheusAlerts] = t
 	}
+	for name, t := range registry.tools {
+		registry.tools[name] = observedTool{t, name}
+	}
 	return registry, nil
 }
 

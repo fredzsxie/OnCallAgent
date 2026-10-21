@@ -11,6 +11,7 @@ import (
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/operations"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 type Prometheus struct {
@@ -25,12 +26,27 @@ func NewPrometheus(c config.ToolHTTP) (*Prometheus, error) {
 		return nil, operations.Failure(operations.PrometheusTool, operations.ErrConfiguration)
 	}
 	h, transport := newToolHTTP(c)
+	h.Transport = &observedTransport{h.Transport, "Prom", "alerts"}
 	return &Prometheus{h, transport, strings.TrimRight(c.URL, "/") + "/api/v1/alerts", c.Timeout}, nil
 }
 
 func (p *Prometheus) Close() { p.transport.CloseIdleConnections() }
 
-func (p *Prometheus) Alerts(ctx context.Context) (operations.AlertsResult, error) {
+func (p *Prometheus) Alerts(ctx context.Context) (out operations.AlertsResult, err error) {
+	started := time.Now()
+	defer func() {
+		fields := []logger.Field{logger.F("elapsed", time.Since(started))}
+		if err != nil {
+			var failure *operations.Error
+			code := logger.Code(err)
+			if errors.As(err, &failure) {
+				code = failure.Code
+			}
+			logger.Warn(ctx, "Prom", "告警查询失败", append(fields, logger.F("code", code))...)
+		} else {
+			logger.Info(ctx, "Prom", "告警查询完成", append(fields, logger.F("count", len(out.Alerts)))...)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.endpoint, nil)

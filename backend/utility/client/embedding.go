@@ -7,23 +7,26 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/embedding/ark"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 type Embedding struct {
 	model *ark.Embedder
 	cfg   config.Embedding
 	http  *http.Client
+	ctx   context.Context
 }
 
 var _ embedding.Embedder = (*Embedding)(nil)
 
 func NewEmbedding(ctx context.Context, cfg config.Embedding) (*Embedding, error) {
 	h := &http.Client{
-		Transport: http.DefaultTransport.(*http.Transport).Clone(), Timeout: cfg.Timeout,
+		Transport: &observedTransport{http.DefaultTransport.(*http.Transport).Clone(), "Embed", "embedding"}, Timeout: cfg.Timeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	// Vision models use the multimodal API even when the input contains only text.
@@ -36,12 +39,24 @@ func NewEmbedding(ctx context.Context, cfg config.Embedding) (*Embedding, error)
 		h.CloseIdleConnections()
 		return nil, errors.New("cannot initialize embedding client")
 	}
-	return &Embedding{model: model, cfg: cfg, http: h}, nil
+	logger.Info(ctx, "Embed", "Embedding 客户端已就绪")
+	return &Embedding{model: model, cfg: cfg, http: h, ctx: ctx}, nil
 }
 
-func (c *Embedding) Close() { c.http.CloseIdleConnections() }
+func (c *Embedding) Close() {
+	c.http.CloseIdleConnections()
+	logger.Debug(c.ctx, "Embed", "Embedding 客户端已关闭")
+}
 
-func (c *Embedding) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
+func (c *Embedding) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) (out [][]float64, err error) {
+	started := time.Now()
+	defer func() {
+		dim := 0
+		if len(out) > 0 {
+			dim = len(out[0])
+		}
+		logger.Finish(ctx, "Embed", "向量生成", started, err, logger.F("count", len(texts)), logger.F("dimension", dim))
+	}()
 	if len(texts) == 0 {
 		return nil, errors.New("embedding input must not be empty")
 	}

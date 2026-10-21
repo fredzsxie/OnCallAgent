@@ -8,10 +8,13 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 // Generated with Eino Dev 1.3.0 nclc; adapted for dependency injection and bounded execution.
-func BuildChatAgent(ctx context.Context, cfg Config, deps Dependencies) (compose.Runnable[*UserMessage, *schema.Message], error) {
+func BuildChatAgent(ctx context.Context, cfg Config, deps Dependencies) (result compose.Runnable[*UserMessage, *schema.Message], err error) {
+	started := time.Now()
+	defer func() { logger.Finish(ctx, "Graph", "图编译", started, err, logger.F("graph", "ChatAgent")) }()
 	if err := cfg.Agent.Validate(); err != nil {
 		return nil, err
 	}

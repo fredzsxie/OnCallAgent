@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 type Store struct {
@@ -74,6 +75,7 @@ func (s *Store) Acquire(ctx context.Context, id string) (*Turn, error) {
 		return nil, err
 	}
 	if !s.now().Before(e.expires) {
+		logger.Debug(ctx, "Memory", "会话历史已过期", logger.F("session_hash", logger.Digest(id)), logger.F("discarded_rounds", len(e.history)/2))
 		e.history = nil
 	}
 	return t, nil

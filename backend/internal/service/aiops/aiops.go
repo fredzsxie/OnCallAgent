@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 const DefaultQuery = `检查当前 Prometheus 告警，保留每个告警实例，核对当前时间并检索相关内部排查手册。根据实际证据生成包含告警、证据、根因候选、处理建议及未确认事项的中文报告，引用文档来源。无告警不等于系统健康；明确说明禁用、失败或缺失的工具和证据。仅分析，不执行修复。`
@@ -45,6 +46,8 @@ func (s *AIOpsService) Analyze(ctx context.Context) (*pipeline.Result, error) {
 }
 
 func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink func(pipeline.Event) error) (*pipeline.Result, error) {
+	started := time.Now()
+	logger.Info(ctx, "Ops", "开始运维分析", logger.F("timeout", s.timeout))
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return &pipeline.Result{Detail: []pipeline.Event{}}, Wrap(pipeline.ErrInvalidInput, nil)
@@ -69,8 +72,16 @@ func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink fun
 	}
 	if err != nil {
 		result.Report = ""
+		logger.Failure(ctx, "Ops", "运维分析失败", err, logger.F("code", pipeline.ErrorCode(err)), logger.F("events", len(result.Detail)), logger.F("elapsed", time.Since(started)))
 		return result, Wrap(err, result.Detail)
 	}
+	failures := 0
+	for _, e := range result.Detail {
+		if e.Type == "tool" && e.Status == "failed" {
+			failures++
+		}
+	}
+	logger.Info(ctx, "Ops", "运维分析完成", logger.F("events", len(result.Detail)), logger.F("tool_failures", failures), logger.F("evidence_limited", failures > 0), logger.F("elapsed", time.Since(started)))
 	return result, nil
 }
 

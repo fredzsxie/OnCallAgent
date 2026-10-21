@@ -17,6 +17,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/operations"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 func main() {
@@ -68,6 +69,13 @@ func run() error {
 	if err := config.LoadEnv(); err != nil {
 		return operations.Failure("tools_cmd", operations.ErrConfiguration)
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, logs, err := logger.Bootstrap(ctx, false)
+	if err != nil {
+		return err
+	}
+	defer logs.Close()
 	cfg, err := config.LoadTools()
 	if err != nil {
 		return operations.Failure("tools_cmd", operations.ErrConfiguration)
@@ -84,8 +92,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	connections, err := client.OpenOperations(ctx, cfg)
 	if err != nil {
 		return err

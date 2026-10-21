@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/indexer"
@@ -15,6 +16,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	localclient "github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
@@ -37,7 +39,7 @@ func NewStore(ctx context.Context, db client.Client, emb embedding.Embedder, cfg
 	defer cancel()
 	collection, err := db.DescribeCollection(ctx, cfg.Collection)
 	if err != nil {
-		return nil, operationError(ctx, "describe collection; run init_knowledge first")
+		return nil, operationError(ctx, "describe collection; run init_knowledge first", err)
 	}
 	dimension := VectorDimension(collection.Schema)
 	if dimension < 1 {
@@ -53,6 +55,7 @@ func NewStore(ctx context.Context, db client.Client, emb embedding.Embedder, cfg
 	if !hasIndex {
 		return nil, errors.New("vector index is missing; run init_knowledge first")
 	}
+	logger.Info(ctx, "Milvus", "集合校验完成", logger.F("dimension", dimension), logger.F("metric", "COSINE"))
 	return &Store{db, emb, cfg, dimension}, nil
 }
 
@@ -64,7 +67,12 @@ func NewID() (string, error) {
 	return hex.EncodeToString(id[:]), nil
 }
 
-func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...indexer.Option) ([]string, error) {
+func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...indexer.Option) (out []string, err error) {
+	started := time.Now()
+	stage := "validate"
+	defer func() {
+		logger.Finish(ctx, "Milvus", "向量写入", started, err, logger.F("stage", stage), logger.F("count", len(docs)))
+	}()
 	options := indexer.GetCommonOptions(nil, opts...)
 	if len(options.SubIndexes) != 0 || options.Embedding != nil {
 		return nil, errors.New("sub-index and embedder overrides are unsupported")
@@ -98,6 +106,7 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
+	stage = "embedding"
 	vectors, err := s.embedding.EmbedStrings(ctx, texts)
 	if err != nil {
 		return nil, err
@@ -112,11 +121,12 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 			return nil, err
 		}
 	}
+	stage = "upsert"
 	written, err := s.db.Upsert(ctx, s.cfg.Collection, "",
 		entity.NewColumnVarChar("id", ids), entity.NewColumnVarChar("content", texts),
 		entity.NewColumnJSONBytes("metadata", metadata), entity.NewColumnFloatVector("vector", s.dimension, values))
 	if err != nil {
-		return nil, operationError(ctx, "upsert documents")
+		return nil, operationError(ctx, "upsert documents", err)
 	}
 	if written == nil || written.Len() != len(ids) {
 		return nil, errors.New("Milvus returned an incomplete upsert result")
@@ -131,7 +141,12 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 	return ids, nil
 }
 
-func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Option) ([]*schema.Document, error) {
+func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Option) (out []*schema.Document, err error) {
+	started := time.Now()
+	stage := "validate"
+	defer func() {
+		logger.Finish(ctx, "Milvus", "向量检索", started, err, logger.F("stage", stage), logger.F("count", len(out)))
+	}()
 	options := retriever.GetCommonOptions(nil, opts...)
 	if options.Index != nil || options.SubIndex != nil || options.Embedding != nil || len(options.DSLInfo) != 0 {
 		return nil, errors.New("index, sub-index, embedder and DSL overrides are unsupported")
@@ -145,6 +160,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
+	stage = "embedding"
 	vectors, err := s.embedding.EmbedStrings(ctx, []string{query})
 	if err != nil {
 		return nil, err
@@ -165,9 +181,10 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 		return nil, err
 	}
 	// Strong consistency makes a completed write visible to the following verification search.
+	stage = "search"
 	results, err := s.db.Search(ctx, s.cfg.Collection, nil, "", []string{"content", "metadata"}, []entity.Vector{entity.FloatVector(vector)}, "vector", entity.COSINE, topK, searchParam, client.WithSearchQueryConsistencyLevel(entity.ClStrong))
 	if err != nil {
-		return nil, operationError(ctx, "search vectors")
+		return nil, operationError(ctx, "search vectors", err)
 	}
 	if len(results) != 1 || results[0].Err != nil {
 		return nil, errors.New("invalid Milvus search result")
@@ -206,7 +223,11 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	return docs, nil
 }
 
-func (s *Store) DeleteOld(ctx context.Context, documentID, version string) error {
+func (s *Store) DeleteOld(ctx context.Context, documentID, version string) (err error) {
+	started := time.Now()
+	defer func() {
+		logger.Finish(ctx, "Milvus", "旧版本清理", started, err, logger.F("document_hash", documentID))
+	}()
 	for _, value := range []string{documentID, version} {
 		decoded, err := hex.DecodeString(value)
 		if err != nil || len(decoded) != 32 {
@@ -218,7 +239,7 @@ func (s *Store) DeleteOld(ctx context.Context, documentID, version string) error
 	// Only generated hashes enter the filter, never filenames or document text.
 	expression := fmt.Sprintf(`metadata["document_id"] == "%s" and metadata["version"] != "%s"`, documentID, version)
 	if err := s.db.Delete(ctx, s.cfg.Collection, "", expression); err != nil {
-		return operationError(ctx, "delete old document chunks")
+		return operationError(ctx, "delete old document chunks", err)
 	}
 	return nil
 }

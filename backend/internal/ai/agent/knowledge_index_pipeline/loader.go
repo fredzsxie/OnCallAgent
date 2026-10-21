@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 type fileLoader struct{ cfg Config }
@@ -29,7 +31,9 @@ func newLoader(_ context.Context, cfg Config) (document.Loader, error) {
 
 func (*fileLoader) GetType() string { return "FileLoader" }
 
-func (l *fileLoader) Load(ctx context.Context, src document.Source, opts ...document.LoaderOption) ([]*schema.Document, error) {
+func (l *fileLoader) Load(ctx context.Context, src document.Source, opts ...document.LoaderOption) (out []*schema.Document, err error) {
+	started := time.Now()
+	defer func() { logger.Finish(ctx, "Loader", "文件读取", started, err, logger.F("documents", len(out))) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

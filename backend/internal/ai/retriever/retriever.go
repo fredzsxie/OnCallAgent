@@ -6,10 +6,12 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	eino "github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 var (
@@ -47,7 +49,12 @@ func NewMilvusRetriever(base eino.Retriever, cfg config.Retrieval) (*MilvusRetri
 	return &MilvusRetriever{base: base, cfg: cfg}, nil
 }
 
-func (r *MilvusRetriever) Retrieve(ctx context.Context, query string, opts ...eino.Option) ([]*schema.Document, error) {
+func (r *MilvusRetriever) Retrieve(ctx context.Context, query string, opts ...eino.Option) (out []*schema.Document, err error) {
+	started := time.Now()
+	effective := r.cfg
+	defer func() {
+		logger.Finish(ctx, "RAG", "知识检索", started, err, logger.F("top_k", effective.TopK), logger.F("score_threshold", effective.ScoreThreshold), logger.F("documents", len(out)))
+	}()
 	if err := ctx.Err(); err != nil {
 		return nil, queryError(err)
 	}
@@ -69,6 +76,7 @@ func (r *MilvusRetriever) Retrieve(ctx context.Context, query string, opts ...ei
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	effective = cfg
 	docs, err := r.base.Retrieve(ctx, query, eino.WithTopK(cfg.TopK), eino.WithScoreThreshold(cfg.ScoreThreshold))
 	if err != nil {
 		return nil, queryError(err)

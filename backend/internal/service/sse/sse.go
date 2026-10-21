@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
@@ -92,6 +93,13 @@ func (w *streamWriter) send(ctx context.Context, event string, data any) error {
 }
 
 func (s *Service) Serve(ctx context.Context, r *ghttp.Request, id, question string) error {
+	started := time.Now()
+	var executionErr error
+	chunks, contentBytes := 0, 0
+	defer func() {
+		middleware.SetExecutionError(r, executionErr)
+		logger.Finish(ctx, "SSE", "流式响应", started, executionErr, logger.F("chunks", chunks), logger.F("content_bytes", contentBytes))
+	}()
 	var writer *streamWriter
 	defer func() {
 		if writer != nil {
@@ -105,15 +113,25 @@ func (s *Service) Serve(ctx context.Context, r *ghttp.Request, id, question stri
 			if err != nil {
 				return err
 			}
-			return writer.send(ctx, "connected", map[string]string{"status": "connected"})
+			err = writer.send(ctx, "connected", map[string]string{"status": "connected"})
+			if err == nil {
+				logger.Info(ctx, "SSE", "连接已建立")
+			}
+			return err
 		},
 		OnMessage: func(ctx context.Context, content string) error {
-			return writer.send(ctx, "message", map[string]string{"content": content})
+			err := writer.send(ctx, "message", map[string]string{"content": content})
+			if err == nil {
+				chunks++
+				contentBytes += len(content)
+			}
+			return err
 		},
 		OnComplete: func(ctx context.Context) error {
 			return writer.send(ctx, "done", map[string]string{"status": "completed"})
 		},
 	})
+	executionErr = err
 	if writer == nil || !writer.started {
 		return err
 	}

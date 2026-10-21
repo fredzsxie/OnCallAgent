@@ -10,9 +10,12 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
-func BuildOpsAgent(ctx context.Context, cfg config.OpsAgent, deps Dependencies) (*Agent, error) {
+func BuildOpsAgent(ctx context.Context, cfg config.OpsAgent, deps Dependencies) (result *Agent, err error) {
+	started := time.Now()
+	defer func() { logger.Finish(ctx, "Graph", "图编译", started, err, logger.F("graph", "OpsAgent")) }()
 	if cfg.Validate() != nil || deps.PlannerModel == nil || deps.ExecutorModel == nil {
 		return nil, ErrExecution
 	}

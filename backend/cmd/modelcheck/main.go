@@ -9,6 +9,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/modelcheck"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/gogf/gf/v2/os/gctx"
 )
 
@@ -28,7 +29,12 @@ func run() error {
 		return err
 	}
 	// Share one total deadline across catalog lookup and completion instead of resetting it.
-	ctx, cancel := context.WithTimeout(gctx.New(), cfg.Timeout)
+	ctx, logs, err := logger.Bootstrap(gctx.New(), false)
+	if err != nil {
+		return err
+	}
+	defer logs.Close()
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 	model, err := client.NewOpenAI(ctx, cfg)
 	if err != nil {

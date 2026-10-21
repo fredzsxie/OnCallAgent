@@ -13,6 +13,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 var (
@@ -88,6 +89,15 @@ func record(ctx context.Context, agent, kind, toolName, status, summary string, 
 		e.Count = &count
 	}
 	s.events = append(s.events, e)
+	fields := []logger.Field{logger.F("agent", agent), logger.F("event", kind), logger.F("iteration", s.iteration), logger.F("sequence", e.Sequence), logger.F("tool", toolName), logger.F("status", status)}
+	if e.Count != nil {
+		fields = append(fields, logger.F("count", *e.Count))
+	}
+	log := logger.Info
+	if status == "failed" {
+		log = logger.Warn
+	}
+	log(ctx, "Ops", "运维执行事件", fields...)
 	if s.sink != nil && s.sink(e) != nil {
 		s.err = ErrEventWrite
 		s.cancel()

@@ -6,11 +6,13 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 var ErrModelRequest = errors.New("model request failed")
@@ -23,15 +25,23 @@ type OpenAI struct {
 	model *openai.ChatModel
 	http  *http.Client
 	cfg   config.ChatModel
+	ctx   context.Context
+	role  string
 }
 
-func NewOpenAI(ctx context.Context, cfg config.ChatModel) (*OpenAI, error) {
+func NewOpenAI(ctx context.Context, cfg config.ChatModel, roles ...string) (*OpenAI, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	role := "chat"
+	if len(roles) > 0 && (roles[0] == "planner" || roles[0] == "executor") {
+		role = roles[0]
+	}
+	started := time.Now()
+	logger.Info(ctx, "Model", "初始化模型客户端", logger.F("role", role))
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	httpClient := &http.Client{
-		Transport: transport,
+		Transport: &observedTransport{transport, "Model", role},
 		Timeout:   cfg.Timeout,
 		// Do not forward credentials to a redirected API address.
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
@@ -44,10 +54,13 @@ func NewOpenAI(ctx context.Context, cfg config.ChatModel) (*OpenAI, error) {
 		transport.CloseIdleConnections()
 		return nil, errors.New("could not initialize Eino ChatModel")
 	}
-	return &OpenAI{model: model, http: httpClient, cfg: cfg}, nil
+	logger.Info(ctx, "Model", "模型客户端已就绪", logger.F("role", role), logger.F("elapsed", time.Since(started)))
+	return &OpenAI{model: model, http: httpClient, cfg: cfg, ctx: ctx, role: role}, nil
 }
 
-func (c *OpenAI) Generate(ctx context.Context, question string) (string, error) {
+func (c *OpenAI) Generate(ctx context.Context, question string) (answer string, err error) {
+	started := time.Now()
+	defer func() { logger.Finish(ctx, "Model", "模型生成", started, err, logger.F("role", c.role)) }()
 	// Preserve request cancellation and any earlier deadline from the parent context.
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
@@ -72,7 +85,8 @@ func (c *OpenAI) Generate(ctx context.Context, question string) (string, error) 
 
 func (c *OpenAI) Close() {
 	c.http.CloseIdleConnections()
+	logger.Debug(c.ctx, "Model", "模型客户端已关闭", logger.F("role", c.role))
 }
 
 // ToolCallingModel shares the configured HTTP client without changing ordinary chat behavior.
-func (c *OpenAI) ToolCallingModel() model.ToolCallingChatModel { return c.model }
+func (c *OpenAI) ToolCallingModel() model.ToolCallingChatModel { return observedModel{c.model, c.role} }

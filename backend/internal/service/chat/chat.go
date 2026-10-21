@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/mem"
 )
 
@@ -49,18 +50,25 @@ func normalize(id, question string) (string, string, error) {
 	return id, question, nil
 }
 
-func (s *ChatService) Chat(ctx context.Context, id, question string) (string, error) {
-	id, question, err := normalize(id, question)
+func (s *ChatService) Chat(ctx context.Context, id, question string) (answer string, err error) {
+	started := time.Now()
+	committed := false
+	defer func() {
+		logger.Finish(ctx, "Chat", "对话执行", started, err, logger.F("mode", "invoke"), logger.F("history_committed", committed))
+	}()
+	id, question, err = normalize(id, question)
 	if err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+	waiting := time.Now()
 	turn, err := s.memory.Acquire(ctx, id)
 	if err != nil {
 		return "", executionError(ctx, err)
 	}
 	defer turn.Close()
+	logger.Info(ctx, "Chat", "开始对话", logger.F("session_hash", logger.Digest(id)), logger.F("lock_wait", time.Since(waiting)), logger.F("history_rounds", len(turn.History())/2))
 	out, err := s.agent.Invoke(ctx, &pipeline.UserMessage{ID: id, Query: question, History: turn.History()})
 	if err != nil {
 		return "", executionError(ctx, err)
@@ -72,11 +80,17 @@ func (s *ChatService) Chat(ctx context.Context, id, question string) (string, er
 		return "", pipeline.ErrAgentFailed
 	}
 	turn.Commit(question, out.Content)
+	committed = true
 	return out.Content, nil
 }
 
-func (s *ChatService) Stream(ctx context.Context, id, question string, callbacks StreamCallbacks) error {
-	id, question, err := normalize(id, question)
+func (s *ChatService) Stream(ctx context.Context, id, question string, callbacks StreamCallbacks) (err error) {
+	started := time.Now()
+	committed := false
+	defer func() {
+		logger.Finish(ctx, "Chat", "对话执行", started, err, logger.F("mode", "stream"), logger.F("history_committed", committed))
+	}()
+	id, question, err = normalize(id, question)
 	if err != nil {
 		return err
 	}
@@ -91,11 +105,13 @@ func (s *ChatService) Stream(ctx context.Context, id, question string, callbacks
 	if err := callbacks.OnStart(ctx); err != nil {
 		return err
 	}
+	waiting := time.Now()
 	turn, err := s.memory.Acquire(ctx, id)
 	if err != nil {
 		return executionError(ctx, err)
 	}
 	defer turn.Close()
+	logger.Info(ctx, "Chat", "开始对话", logger.F("session_hash", logger.Digest(id)), logger.F("lock_wait", time.Since(waiting)), logger.F("history_rounds", len(turn.History())/2))
 	reader, err := s.agent.Stream(ctx, &pipeline.UserMessage{ID: id, Query: question, History: turn.History()})
 	if reader != nil {
 		defer reader.Close()
@@ -143,6 +159,7 @@ func (s *ChatService) Stream(ctx context.Context, id, question string, callbacks
 		return executionError(ctx, ctx.Err())
 	}
 	turn.Commit(question, answer.String())
+	committed = true
 	return nil
 }
 

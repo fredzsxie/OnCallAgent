@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/gogf/gf/v2/frame/g"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
@@ -34,7 +34,7 @@ func UploadBody(maxBytes int64) ghttp.HandlerFunc {
 		defer func() {
 			if r.MultipartForm != nil {
 				if err := r.MultipartForm.RemoveAll(); err != nil {
-					g.Log().Warning(r.Context(), "could not remove multipart temporary files")
+					logger.Warn(r.Context(), "Upload", "临时文件清理失败", logger.F("code", logger.Code(err)))
 				}
 			}
 		}()

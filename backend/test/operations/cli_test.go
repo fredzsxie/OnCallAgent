@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+
 )
 
 var toolBinary string
@@ -142,5 +144,39 @@ func TestToolsCLISignalCancelsPendingQuery(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("signal did not cancel tool")
+	}
+}
+
+func TestCLILogsUseRunIDsAndKeepJSONStreams(t *testing.T) {
+	directory := t.TempDir()
+	for range 2 {
+		command := exec.Command(toolBinary, "--tool", "get_current_time", "--input", "{}")
+		command.Dir = directory
+		command.Env = toolEnvironment("ONCALL_LOG_LEVEL=debug")
+		var stdout, stderr bytes.Buffer
+		command.Stdout = &stdout
+		command.Stderr = &stderr
+		if err := command.Run(); err != nil || !json.Valid(stdout.Bytes()) || stderr.Len() != 0 {
+			t.Fatal("CLI protocol changed", err, stdout.String(), stderr.String())
+		}
+	}
+	files, err := filepath.Glob(filepath.Join(directory, "log", "oncall-*.log"))
+	if err != nil || len(files) != 1 {
+		t.Fatal("missing CLI log", files, err)
+	}
+	content, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := map[string]bool{}
+	for _, line := range strings.Split(string(content), "\n") {
+		for _, field := range strings.Fields(line) {
+			if strings.HasPrefix(field, "run=") {
+				runs[field] = true
+			}
+		}
+	}
+	if len(runs) != 2 || !strings.Contains(string(content), "tool=get_current_time") || strings.Contains(string(content), "\x1b") {
+		t.Fatal("run correlation or formatting", string(content))
 	}
 }

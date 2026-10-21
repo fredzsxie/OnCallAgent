@@ -18,6 +18,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 var errInitialize = errors.New("could not initialize ops dependencies; check enabled tools and model configuration")
@@ -78,6 +79,11 @@ func run() (*pipeline.Result, error) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, logs, err := logger.Bootstrap(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	defer logs.Close()
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 	startupError := func() error {
@@ -96,12 +102,12 @@ func run() (*pipeline.Result, error) {
 		encoder := json.NewEncoder(file)
 		sink = func(e pipeline.Event) error { return encoder.Encode(e) }
 	}
-	planner, err := client.NewOpenAI(ctx, plannerCfg)
+	planner, err := client.NewOpenAI(ctx, plannerCfg, "planner")
 	if err != nil {
 		return nil, startupError()
 	}
 	defer planner.Close()
-	executor, err := client.NewOpenAI(ctx, executorCfg)
+	executor, err := client.NewOpenAI(ctx, executorCfg, "executor")
 	if err != nil {
 		return nil, startupError()
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 func main() {
@@ -112,6 +113,11 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, logs, err := logger.Bootstrap(ctx, false)
+	if err != nil {
+		return err
+	}
+	defer logs.Close()
 	modelClient, err := client.NewOpenAI(ctx, modelCfg)
 	if err != nil {
 		return err

@@ -3,10 +3,12 @@ package chat_pipeline
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 func newReactAgentLambda(ctx context.Context, cfg Config, deps Dependencies) (*compose.Lambda, error) {
@@ -22,7 +24,9 @@ func newReactAgentLambda(ctx context.Context, cfg Config, deps Dependencies) (*c
 	if err != nil {
 		return nil, ErrAgentFailed
 	}
-	invoke := func(ctx context.Context, input []*schema.Message, _ ...any) (*schema.Message, error) {
+	invoke := func(ctx context.Context, input []*schema.Message, _ ...any) (out *schema.Message, err error) {
+		started := time.Now()
+		defer func() { logger.Finish(ctx, "Agent", "对话图执行", started, err, logger.F("mode", "invoke")) }()
 		ctx, cancel, err := executionContext(ctx)
 		if err != nil {
 			return nil, err
@@ -42,8 +46,11 @@ func newReactAgentLambda(ctx context.Context, cfg Config, deps Dependencies) (*c
 		if err != nil {
 			return nil, err
 		}
+		started := time.Now()
+		logger.Debug(ctx, "Agent", "开始流式图执行")
 		upstream, err := agent.Stream(ctx, input)
 		if err != nil {
+			logger.Finish(ctx, "Agent", "流式图初始化", started, err)
 			safe := safeError(ctx, err)
 			cancel()
 			return nil, safe
@@ -51,6 +58,10 @@ func newReactAgentLambda(ctx context.Context, cfg Config, deps Dependencies) (*c
 		// Keep the deadline active until the stream finishes, rather than until Stream returns.
 		output, writer := schema.Pipe[*schema.Message](0)
 		go func() {
+			var executionErr error
+			defer func() {
+				logger.Finish(ctx, "Agent", "流式图执行", started, executionErr, logger.F("mode", "stream"))
+			}()
 			defer cancel()
 			defer upstream.Close()
 			defer writer.Close()
@@ -58,19 +69,23 @@ func newReactAgentLambda(ctx context.Context, cfg Config, deps Dependencies) (*c
 				msg, err := upstream.Recv()
 				if err == io.EOF {
 					if ctx.Err() != nil {
+						executionErr = ctx.Err()
 						writer.Send(nil, safeError(ctx, ctx.Err()))
 					}
 					return
 				}
 				if err != nil {
+					executionErr = err
 					writer.Send(nil, safeError(ctx, err))
 					return
 				}
 				if ctx.Err() != nil {
+					executionErr = ctx.Err()
 					writer.Send(nil, safeError(ctx, ctx.Err()))
 					return
 				}
 				if writer.Send(msg, nil) {
+					executionErr = context.Canceled
 					return
 				}
 			}

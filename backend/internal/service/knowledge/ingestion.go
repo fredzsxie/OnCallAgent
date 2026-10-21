@@ -7,9 +7,11 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 var sourceLocks sync.Map
@@ -74,7 +76,9 @@ func ReadDocument(ctx context.Context, input io.Reader, maxBytes int64) ([]byte,
 	return data, nil
 }
 
-func IndexChunks(ctx context.Context, store DocumentStore, docs []*schema.Document, batchSize int) ([]string, error) {
+func IndexChunks(ctx context.Context, store DocumentStore, docs []*schema.Document, batchSize int) (out []string, err error) {
+	started := time.Now()
+	defer func() { logger.Finish(ctx, "Index", "知识片段入库", started, err, logger.F("count", len(docs))) }()
 	if store == nil || len(docs) == 0 || docs[0] == nil || batchSize < 1 {
 		return nil, ErrInvalidDocument
 	}
@@ -91,6 +95,7 @@ func IndexChunks(ctx context.Context, store DocumentStore, docs []*schema.Docume
 			return nil, errors.Join(ErrRetryable, err)
 		}
 		batch := docs[start:min(start+batchSize, len(docs))]
+		logger.Debug(ctx, "Index", "开始写入批次", logger.F("batch", start/batchSize+1), logger.F("count", len(batch)))
 		written, err := store.Store(ctx, batch)
 		if err != nil {
 			return nil, errors.Join(ErrRetryable, err)
@@ -104,6 +109,7 @@ func IndexChunks(ctx context.Context, store DocumentStore, docs []*schema.Docume
 			}
 		}
 		ids = append(ids, written...)
+		logger.Debug(ctx, "Index", "批次写入已确认", logger.F("batch", start/batchSize+1), logger.F("count", len(written)))
 	}
 	// Only remove old versions after every new chunk has been acknowledged.
 	if err := ctx.Err(); err != nil {

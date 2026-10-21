@@ -9,11 +9,13 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
 var (
@@ -66,21 +68,36 @@ func Supported(source string) bool {
 
 func UploadName(filename string) string { return path.Base(strings.ReplaceAll(filename, "\\", "/")) }
 
-func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.Reader) (Result, error) {
+func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.Reader) (out Result, err error) {
+	started := time.Now()
+	stage := "validate"
+	defer func() {
+		fields := []logger.Field{logger.F("source_hash", logger.Digest(source)), logger.F("stage", stage), logger.F("elapsed", time.Since(started))}
+		if err != nil {
+			if errors.Is(err, ErrInvalidDocument) || errors.Is(err, ErrTooLarge) || errors.Is(err, ErrUnsupportedFormat) {
+				logger.Warn(ctx, "Upload", "文件校验未通过", fields...)
+			} else {
+				logger.Failure(ctx, "Upload", "文件处理失败", err, fields...)
+			}
+		} else {
+			logger.Info(ctx, "Upload", "文件入库完成", append(fields, logger.F("chunk_count", out.ChunkCount))...)
+		}
+	}()
 	if input == nil {
 		return Result{}, ErrInvalidDocument
 	}
-	var err error
 	source, err = NormalizeSource(source)
 	if err != nil {
 		return Result{}, err
 	}
 	// Uploads lock the entire save/invoke operation; the graph uses a separate write lock.
+	waiting := time.Now()
 	unlock, err := lockSource(ctx, source, &uploadLocks)
 	if err != nil {
 		return Result{}, errors.Join(ErrIngest, err)
 	}
 	defer unlock()
+	logger.Debug(ctx, "Upload", "获得来源处理锁", logger.F("source_hash", logger.Digest(source)), logger.F("lock_wait", time.Since(waiting)))
 	data, err := ReadDocument(ctx, input, s.cfg.MaxUploadBytes)
 	if err != nil {
 		if errors.Is(err, ErrRetryable) {
@@ -89,11 +106,14 @@ func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.R
 		return Result{}, err
 	}
 	hash := digest(string(data))
+	stage = "save"
 	savedPath, size, err := s.save(digest(source)+"_"+hash+strings.ToLower(path.Ext(source)), data)
 	if err != nil {
 		return Result{}, errors.Join(ErrSave, ErrRetryable, err)
 	}
 	result := Result{FileName: filepath.Base(savedPath), FilePath: savedPath, FileSize: size, Source: source, ContentHash: hash}
+	logger.Info(ctx, "Upload", "文件保存完成", logger.F("source_hash", logger.Digest(source)), logger.F("file_size", size), logger.F("format", strings.TrimPrefix(strings.ToLower(path.Ext(source)), ".")))
+	stage = "ingest"
 	ids, err := s.indexFile(ctx, document.Source{URI: savedPath}, source)
 	if err != nil {
 		return result, errors.Join(ErrIngest, ErrRetryable, err)
