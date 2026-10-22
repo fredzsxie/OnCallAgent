@@ -1,94 +1,55 @@
-# OnCallAgent 前端
+# OnCallAgent Web 工作台
 
-原生 HTML、CSS、JavaScript 聊天工作台。无需 npm install 或构建，运行时资源均在本目录。开发服务器要求 Node.js 20+，页面使用现代浏览器的 Fetch、ReadableStream、AbortController 和 localStorage。
+[项目首页](../README.md) · [配置](../docs/configuration.md) · [API](../docs/api.md) · [部署](../docs/deployment.md)
+
+原生 HTML、CSS、JavaScript 页面，提供聊天、知识文件上传和独立 AI Ops 报告面板。无需 npm 安装或构建；Markdown 依赖随仓库提供，不依赖运行时 CDN。
 
 ## 启动
 
-先启动后端：
+要求 Node.js **20+** 和支持 Fetch、ReadableStream、AbortController、localStorage 的现代浏览器。先按[快速开始](../README.md#快速开始)准备并启动后端，再从仓库根目录执行：
 
 ```bash
-cd OnCallAgent/backend
-GOTOOLCHAIN=local go run .
+./frontend/start.sh
 ```
 
-另一终端启动前端，打开 http://127.0.0.1:8080：
+打开 **http://127.0.0.1:8080**。自定义开发后端和端口：
 
 ```bash
-cd OnCallAgent/frontend
-./start.sh
-
-# 后端地址和本地前端端口可覆盖，不读取或修改 backend/.env
-ONCALL_API_ORIGIN=http://127.0.0.1:6872 ONCALL_FRONTEND_PORT=8080 ./start.sh
+ONCALL_API_ORIGIN=http://127.0.0.1:6872 \
+ONCALL_FRONTEND_PORT=8080 \
+ONCALL_API_PROXY_TIMEOUT_MS=210000 ./frontend/start.sh
 ```
 
-脚本可以从任意工作目录调用。开发服务只监听 127.0.0.1，只提供明确列出的页面资源，并把 `/api` 代理到启动时指定的 HTTP(S) origin。API origin 不包含 `/api`、账号密码、query 或 fragment。上传和 SSE 双向透传，不缓存完整响应；客户端断开会关闭上游。代理空闲超时默认 210 秒，可设置正整数 `ONCALL_API_PROXY_TIMEOUT_MS`，连接错误返回安全 JSON。代理预算应长于后端 `ONCALL_OPS_TIMEOUT`（默认 180 秒）。
+启动脚本从自身目录运行，不读取后端 `.env`。浏览器始终请求同源 `/api`，开发服务负责转发上传和 SSE；不要直接以 `file://` 打开页面。生产静态托管与 Nginx 示例见[部署指南](../docs/deployment.md#静态前端与同源反向代理)。
 
-页面始终请求同源 `/api`，无需给后端增加 CORS。不要用 file:// 直接打开页面，也不要用只提供静态文件且没有 API 代理的服务器联调。
+## 使用与数据边界
 
-## 使用与接口
+- **聊天**：默认流式，可切换普通模式。Enter 发送、Shift+Enter 换行；输入法候选确认不会误发送。生成期间禁止重复发送和切换，停止按钮通过 AbortController 取消请求。
+- **上传**：支持 txt/md/markdown，默认 10 MiB。成功后展示真实保存文件名、大小、来源及片段数，再进行提问。文件进入共享知识库，不是当前会话附件；服务端路径不作为下载链接。
+- **历史**：新建会话产生独立 Id，打开旧记录沿用原 Id。localStorage 保存展示正文和完成状态，不将历史重新发送到后端；清理浏览器记录不清理后端记忆或知识文件。
+- **上下文**：后端默认记忆 3 轮、成功提交后 30 分钟过期，重启清空。页面只能提示可能失效，不能准确检测；实际行为以服务配置为准。
+- **失败恢复**：停止、错误或缺失 done 的回答标为“未完成”。不自动重试，可手动重新发送；网络中断时无法确认服务端是否已提交本轮。损坏、禁用或容量不足的存储会提示并降级为当前页面内使用。
+- **AI Ops**：发送 `{}` 执行固定分析，显示已用时间、报告和默认折叠的纯文本详情。仅依据成功告警事件的数值 count=0 判断无活动告警。分析期间禁止重复提交和其他冲突操作，可取消；报告仅保留在当前页面，不写入聊天历史或 localStorage。
 
-- 默认流式聊天，可切换普通模式；Enter 发送，Shift+Enter 换行，输入法候选确认期间不发送。
-- 两种模式分别调用 `POST /api/chat` 和 `POST /api/chat_stream`，仅提交 `Id`、`Question`。普通成功读取 `message/data.answer`，SSE 仅在有效 done 后确认成功。
-- 生成时可停止，停止和错误会保留标记为“未完成”的展示记录，不自动重试。重新发送按钮将问题放回输入框，由用户决定是否提交；网络异常时无法确认后端是否已提交本轮。
-- 上传使用 `POST /api/upload` 的 multipart 字段 `file`；支持 txt、md、markdown，默认前端限制 10 MiB。可修改公开的 `config.js` 中 `uploadMaxBytes` 与服务端限制配合，服务端始终做最终校验。此文件不能放密钥。
-- 上传成功展示实际保存文件名、实际字节数、来源和片段数；文件进入共享知识库，不是某会话专有的附件。上传期间先等待入库完成再提问。
-- 会话列表仅为浏览器展示记录。新建会话生成新 Id，恢复旧记录沿用原 Id，不将本地消息重新发送给模型。
-- 导航切换到 AI Ops 后，一键调用 `POST /api/ai_ops`，请求为 `{}`。报告使用现有安全 Markdown 渲染，步骤详情为纯文本；工具 count=0 才能确认该次查询没有活动告警。工具失败或未查询告警时提示证据限制，不能当作系统健康。
-- 分析时显示计时，不展示伪造进度；禁用提交、聊天、上传和切换，取消后立即恢复。失败保留部分概要，可以手动重试；无自动重试。切换面板保留当前报告，刷新后清空，不写入 localStorage 或后端会话。
+助手与运维报告先经 Marked 解析，再经 DOMPurify 白名单过滤；用户输入、错误和详情均为纯文本。默认不加载消息图片，过滤脚本、事件属性、SVG、iframe、表单和不安全链接；库失效时降级为纯文本。第三方版本与许可证见 [vendor/README.md](vendor/README.md)。
 
-localStorage 使用版本化键 `oncallagent.history.v1`，保存会话、标题、正文、完成状态和最近成功时间；刷新前未完成的消息恢复为“未完成”。存储损坏、被禁用或容量不足时提示并降级为当前页面内使用，后续保存可能覆盖损坏数据。清除记录需确认，只清理当前浏览器，不清除后端记忆或知识文件。不同浏览器、不同 origin 的记录不共享；本阶段不做多标签页记录合并。
+公开的 `config.js` 只配置浏览器行为，例如上传大小预校验；不能放密钥。前端不提供身份认证，访问控制需由部署环境提供。
 
-后端默认只记忆最近 3 轮完整对话，成功提交后 30 分钟过期，进程重启清空；实际值以服务配置为准。重新打开旧会话或默认 30 分钟未成功提交时，页面提醒上下文可能失效。现有接口不提供会话状态或重启标识，前端无法准确检测；需要时补充背景或新建会话。
+## 验证
 
-SSE 使用 fetch POST、流式 UTF-8 解码和完整事件边界解析，支持 connected/message/error/done、CRLF/LF、跨块事件、注释及多行 data。仅追加 message.content；非法 JSON、异常 EOF 或 error 不标记成功。停止会 abort 请求并取消 reader。后端仍会先确认模型轮次再输出正文，connected 后等待检索或生成属于正常行为。
-
-助手 Markdown 经本地 Marked 解析、DOMPurify 白名单过滤后生成 DOM；用户消息始终使用纯文本。禁用脚本、表单、样式、SVG、iframe 和图片，仅允许明确的 HTTP(S) 链接；外部链接带 noopener/noreferrer。依赖缺失或渲染失败时降级纯文本。依赖版本、许可证和 SHA-256 见 [vendor/README.md](vendor/README.md)。
-
-## 同源部署
-
-将本目录静态资源复制到部署目录；不需要部署开发用的 Node 服务器。Nginx 示例：
-
-```nginx
-server {
-    listen 80;
-    server_name oncall.example.com;
-    root /srv/oncallagent/frontend;
-    index index.html;
-    client_max_body_size 11m;
-
-    location / {
-        try_files $uri $uri/ =404;
-        add_header X-Content-Type-Options nosniff;
-    }
-    location ~ /\. { deny all; }
-    location ~ ^/(server\.mjs|start\.sh|README\.md)$ { deny all; }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:6872;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 210s;
-        proxy_send_timeout 210s;
-    }
-}
-```
-
-部署时使用 HTTPS，并按后端上传配置同步调整代理大小和超时。静态部署仅复制 index.html、styles.css、app.js、config.js、api.mjs、sse.mjs、history.mjs、render.mjs、aiops.mjs 及 vendor 运行库，许可证可随包附带；不要复制仓库或 backend/.env。自定义后端运维总预算时同步提高代理 read timeout。部署示例本次未在外部服务器执行。
-
-## 验收
-
-从仓库根目录运行：
+在仓库根目录执行：
 
 ```bash
-cd OnCallAgent
-node --test backend/test/frontend/*.test.mjs
-GOTOOLCHAIN=local go -C backend test ./...
-GOTOOLCHAIN=local go -C backend test -race ./...
-GOTOOLCHAIN=local go -C backend vet ./...
-GOTOOLCHAIN=local go -C backend build ./...
+ONCALL_INTEGRATION=0 node --test backend/test/frontend/*.test.mjs
 ```
 
-页面验收清单、Postman 本地完整链路、显式云端验收命令和实际结果见 [第 8 步文档](../docs/stage-08.md)。
+默认测试覆盖 SSE 分块/中文/换行、JSON 与错误事件、缺失 done、取消、存储恢复、AI Ops 状态和代理。真实浏览器手工检查：
+
+- 普通/流式聊天，多轮及跨模式续聊；不同 Id 不混用上下文。
+- 上传后提问、重复上传、格式错误和超限提示。
+- 新建与恢复会话、刷新恢复、未完成消息标记、清除本地记录。
+- 停止后恢复控件、网络失败后手动重试、旧会话上下文提示。
+- AI Ops 成功、无告警、证据受限、超时、取消后重试及折叠详情。
+- Markdown 安全过滤、多行代码、中文输入法、移动端布局、键盘焦点及滚动。
+
+真实 GoFrame + Graph + 模拟依赖的浏览器链路和显式云端测试见[开发与测试](../docs/development.md)。单元测试、本地模拟和真实浏览器/云端验证应分别记录，不互相替代。
