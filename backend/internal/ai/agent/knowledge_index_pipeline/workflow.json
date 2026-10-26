@@ -1,0 +1,187 @@
+{
+  "name": "KnowledgeIndexing",
+  "node_trigger_mode": "AnyPredecessor",
+  "input_type": {
+    "title": "document.Source",
+    "description": "github.com/cloudwego/eino/components/document"
+  },
+  "output_type": {
+    "title": "[]string"
+  },
+  "gen_local_state": {
+    "output_type": {}
+  },
+  "id": "KnowledgeIndexing",
+  "component": "Graph",
+  "nodes": [
+    {
+      "id": "start",
+      "key": "start",
+      "name": "start",
+      "type": "start",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": "FileLoader",
+      "key": "FileLoader",
+      "name": "FileLoader",
+      "type": "Loader",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 120
+        }
+      },
+      "component_schema": {
+        "name": "FileLoader",
+        "component": "Loader",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/FileLoader",
+        "input_type": {
+          "title": "document.Source"
+        },
+        "output_type": {
+          "title": "[]*schema.Document"
+        },
+        "config": {
+          "description": "Root and limits are injected through knowledge_index_pipeline.Config. Optional WithLogicalSource call option overrides metadata only; physical path and file checks always apply.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0"
+      },
+      "node_option": {}
+    },
+    {
+      "id": "MarkdownSplitter",
+      "key": "MarkdownSplitter",
+      "name": "MarkdownSplitter",
+      "type": "DocumentTransformer",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 240
+        }
+      },
+      "component_schema": {
+        "name": "MarkdownSplitter",
+        "component": "DocumentTransformer",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/MarkdownSplitter",
+        "input_type": {
+          "title": "[]*schema.Document"
+        },
+        "output_type": {
+          "title": "[]*schema.Document"
+        },
+        "config": {
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0"
+      },
+      "node_option": {}
+    },
+    {
+      "id": "MilvusIndexer",
+      "key": "MilvusIndexer",
+      "name": "MilvusIndexer",
+      "type": "Indexer",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 360
+        }
+      },
+      "component_schema": {
+        "name": "MilvusIndexer",
+        "component": "Indexer",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline/MilvusIndexer",
+        "input_type": {
+          "title": "[]*schema.Document"
+        },
+        "output_type": {
+          "title": "[]string"
+        },
+        "config": {
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0"
+      },
+      "node_option": {}
+    },
+    {
+      "id": "end",
+      "key": "end",
+      "name": "end",
+      "type": "end",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 480
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "start_FileLoader",
+      "name": "",
+      "sourceWorkflowNodeId": "start",
+      "targetWorkflowNodeId": "FileLoader",
+      "source_node_key": "start",
+      "target_node_key": "FileLoader"
+    },
+    {
+      "id": "FileLoader_MarkdownSplitter",
+      "name": "",
+      "sourceWorkflowNodeId": "FileLoader",
+      "targetWorkflowNodeId": "MarkdownSplitter",
+      "source_node_key": "FileLoader",
+      "target_node_key": "MarkdownSplitter"
+    },
+    {
+      "id": "MarkdownSplitter_MilvusIndexer",
+      "name": "",
+      "sourceWorkflowNodeId": "MarkdownSplitter",
+      "targetWorkflowNodeId": "MilvusIndexer",
+      "source_node_key": "MarkdownSplitter",
+      "target_node_key": "MilvusIndexer"
+    },
+    {
+      "id": "MilvusIndexer_end",
+      "name": "",
+      "sourceWorkflowNodeId": "MilvusIndexer",
+      "targetWorkflowNodeId": "end",
+      "source_node_key": "MilvusIndexer",
+      "target_node_key": "end"
+    }
+  ],
+  "branches": [],
+  "nodeCounter": {
+    "Loader": 1,
+    "DocumentTransformer": 1,
+    "Indexer": 1
+  }
+}

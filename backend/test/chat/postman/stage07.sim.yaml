@@ -1,0 +1,5 @@
+simulation: oncall-chat-stage07
+routing: path
+mocks:
+  - routeKey: model
+    path: ./mocks/chat-model/config.yaml

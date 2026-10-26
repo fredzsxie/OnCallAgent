@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>OnCallAgent · 运维助手</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./config.js" defer></script>
+  <script src="./vendor/marked-18.1.1.umd.js" defer></script>
+  <script src="./vendor/purify-3.4.17.min.js" defer></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <div class="workspace">
+    <aside class="sidebar" id="sidebar" aria-label="会话导航">
+      <a class="brand" href="./" aria-label="OnCallAgent 首页"><span class="brand-mark" aria-hidden="true">O<span></span></span><span>OnCallAgent<small>运维助手</small></span></a>
+      <nav class="workspace-nav" aria-label="工作区"><button id="view-chat" class="selected" aria-pressed="true">聊天</button><button id="view-ops" aria-pressed="false">AI Ops</button></nav>
+      <button id="new-chat" class="new-chat"><span aria-hidden="true">＋</span> 新建会话</button>
+      <div class="sidebar-heading">浏览器记录 <span id="session-count">0</span></div>
+      <nav id="sessions" class="session-list" aria-label="历史会话"></nav>
+      <div class="sidebar-footer"><span class="local-indicator" aria-hidden="true"></span>仅保存在当前浏览器<button id="clear-history" class="text-button">清除记录</button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button id="menu-toggle" class="icon-button mobile-menu" aria-label="展开会话列表" aria-expanded="false" aria-controls="sidebar">☰</button>
+        <div class="conversation-heading"><span class="eyebrow" id="workspace-label">OnCallAgent / 工作会话</span><h1 id="conversation-title">新会话</h1></div>
+        <span class="mode-label" id="mode-label">流式聊天</span>
+      </header>
+      <div id="storage-warning" class="notice warning" role="status" hidden></div>
+      <div id="chat-view" class="chat-view">
+      <div id="context-warning" class="notice" role="status" hidden>浏览器记录仍在，但后端上下文可能已经失效。可以继续提问；如需准确续聊，请补充背景或新建会话。</div>
+      <div class="transcript" id="transcript" tabindex="0" aria-label="聊天消息">
+        <section id="welcome" class="welcome">
+          <span class="welcome-symbol" aria-hidden="true">↗</span><p class="eyebrow">ONCALL WORKSPACE</p>
+          <h2>从一个问题开始。</h2><p>查询运维资料，梳理问题，继续上一轮讨论。</p>
+          <div class="suggestions"><button data-question="如何排查服务认证失败？">如何排查服务认证失败？ <span aria-hidden="true">↗</span></button><button data-question="现在是北京时间几点？">现在是北京时间几点？ <span aria-hidden="true">↗</span></button></div>
+        </section>
+        <div id="messages" class="messages"></div>
+      </div>
+      <div class="composer-area">
+        <button id="jump-bottom" class="jump-bottom" hidden>↓ 回到最新消息</button>
+        <div id="upload-status" class="upload-status" role="status" hidden></div>
+        <form id="composer" class="composer">
+          <label class="sr-only" for="question">问题</label>
+          <textarea id="question" rows="2" placeholder="输入问题，或先上传知识文件…" required></textarea>
+          <div class="composer-toolbar">
+            <div class="composer-options"><button type="button" id="upload" class="upload-button" title="上传知识文件"><span aria-hidden="true">＋</span> 上传文件</button><span class="toolbar-divider"></span><label class="sr-only" for="mode">聊天模式</label><select id="mode"><option value="stream">流式聊天</option><option value="normal">普通聊天</option></select></div>
+            <span id="activity" class="activity" role="status">准备就绪</span>
+            <button type="button" id="stop" class="stop-button" hidden>■ 停止</button><button type="submit" id="send" class="send-button" aria-label="发送问题">发送 <span aria-hidden="true">↑</span></button>
+          </div>
+        </form>
+        <p class="composer-hint">Enter 发送 · Shift+Enter 换行 <span>文件进入共享知识库</span></p>
+        <p class="memory-note">本地记录不等于模型记忆。后端默认保留最近 3 轮、成功提交后 30 分钟过期；服务重启会清空上下文。</p>
+        <input id="file" type="file" accept=".txt,.md,.markdown" hidden>
+      </div>
+      </div>
+      <section id="ops-view" class="ops-view" aria-label="AI Ops 运维分析" hidden>
+        <div class="ops-content">
+          <div class="ops-heading"><div><p class="eyebrow">AI OPS / 只读排查</p><h2>运维分析</h2><p>检查当前告警，结合时间、内部手册与可用日志生成报告。</p></div><button id="ops-run" class="send-button">开始分析 <span aria-hidden="true">↗</span></button><button id="ops-cancel" class="stop-button" hidden>取消分析</button></div>
+          <div id="ops-status" class="ops-status" role="status"><span id="ops-indicator" aria-hidden="true"></span><span id="ops-status-text">准备就绪</span><time id="ops-elapsed" hidden></time></div>
+          <p id="ops-notice" class="ops-notice">使用已启用的工具，不执行修复。分析期间请等待，或取消后重新运行。</p>
+          <div id="ops-empty" class="ops-empty"><span aria-hidden="true">↗</span><h3>报告将在这里生成</h3><p>包括告警、证据、根因候选、处理建议和未确认事项。</p><p>报告仅保留在当前页面，不进入聊天记忆。</p></div>
+          <article id="ops-report" class="message-body ops-report" aria-label="运维分析报告" hidden></article>
+          <details id="ops-details" class="ops-details" hidden><summary>步骤与工具概要 <span id="ops-detail-count"></span></summary><ol id="ops-detail-list"></ol></details>
+        </div>
+      </section>
+    </main>
+  </div>
+  <noscript>请启用 JavaScript 后使用聊天页面。</noscript>
+</body>
+</html>

@@ -1,0 +1,5 @@
+simulation: oncall-operations-stage09
+routing: path
+mocks:
+  - routeKey: prom
+    path: ./prometheus/config.yaml

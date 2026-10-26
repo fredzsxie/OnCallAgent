@@ -1,0 +1,9 @@
+simulation: oncall-frontend-stage11
+routing: path
+mocks:
+  - routeKey: chat
+    path: ../chat/postman/mocks/chat-model/config.yaml
+  - routeKey: model
+    path: ../ops/postman/model/config.yaml
+  - routeKey: prom
+    path: ../operations/postman/prometheus/config.yaml

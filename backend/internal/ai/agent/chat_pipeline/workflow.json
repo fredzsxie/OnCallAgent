@@ -1,0 +1,389 @@
+{
+  "name": "ChatAgent",
+  "node_trigger_mode": "AllPredecessor",
+  "input_type": {
+    "title": "*UserMessage",
+    "description": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
+  },
+  "output_type": {
+    "title": "*schema.Message",
+    "description": "github.com/cloudwego/eino/schema"
+  },
+  "gen_local_state": {
+    "output_type": {}
+  },
+  "id": "ChatAgent",
+  "component": "Graph",
+  "nodes": [
+    {
+      "id": "start",
+      "key": "start",
+      "name": "start",
+      "type": "start",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": "InputToRag",
+      "key": "InputToRag",
+      "name": "InputToRag",
+      "type": "Lambda",
+      "layoutData": {
+        "position": {
+          "x": 200,
+          "y": 120
+        }
+      },
+      "component_schema": {
+        "name": "InputToRag",
+        "component": "Lambda",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline/InputToRag",
+        "input_type": {
+          "title": "*UserMessage"
+        },
+        "output_type": {
+          "title": "string"
+        },
+        "config": {
+          "description": "Validate UserMessage and return its trimmed Query.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0",
+        "extra_property": {
+          "schema": {
+            "type": "object",
+            "description": "",
+            "properties": {
+              "has_option": {
+                "type": "boolean",
+                "description": ""
+              },
+              "interaction_type": {
+                "type": "string",
+                "description": "",
+                "enum": [
+                  "invoke",
+                  "stream",
+                  "collect",
+                  "transform"
+                ]
+              },
+              "option_package_path": {
+                "type": "string",
+                "description": ""
+              },
+              "option_type_name": {
+                "type": "string",
+                "description": ""
+              }
+            },
+            "required": [
+              "interaction_type",
+              "has_option"
+            ]
+          },
+          "extra_property_input": "{\"has_option\":false,\"interaction_type\":\"invoke\"}"
+        }
+      },
+      "node_option": {}
+    },
+    {
+      "id": "InputToChat",
+      "key": "InputToChat",
+      "name": "InputToChat",
+      "type": "Lambda",
+      "layoutData": {
+        "position": {
+          "x": 600,
+          "y": 120
+        }
+      },
+      "component_schema": {
+        "name": "InputToChat",
+        "component": "Lambda",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline/InputToChat",
+        "input_type": {
+          "title": "*UserMessage"
+        },
+        "output_type": {
+          "title": "map[string]any"
+        },
+        "config": {
+          "description": "Return content, a copied user/assistant history, and date in the configured IANA time zone.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0",
+        "extra_property": {
+          "schema": {
+            "type": "object",
+            "description": "",
+            "properties": {
+              "has_option": {
+                "type": "boolean",
+                "description": ""
+              },
+              "interaction_type": {
+                "type": "string",
+                "description": "",
+                "enum": [
+                  "invoke",
+                  "stream",
+                  "collect",
+                  "transform"
+                ]
+              },
+              "option_package_path": {
+                "type": "string",
+                "description": ""
+              },
+              "option_type_name": {
+                "type": "string",
+                "description": ""
+              }
+            },
+            "required": [
+              "interaction_type",
+              "has_option"
+            ]
+          },
+          "extra_property_input": "{\"has_option\":false,\"interaction_type\":\"invoke\"}"
+        }
+      },
+      "node_option": {}
+    },
+    {
+      "id": "MilvusRetriever",
+      "key": "MilvusRetriever",
+      "name": "MilvusRetriever",
+      "type": "Retriever",
+      "layoutData": {
+        "position": {
+          "x": 200,
+          "y": 240
+        }
+      },
+      "component_schema": {
+        "name": "MilvusRetriever",
+        "component": "Retriever",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline/MilvusRetriever",
+        "input_type": {
+          "title": "string"
+        },
+        "output_type": {
+          "title": "[]*schema.Document"
+        },
+        "config": {
+          "description": "Reuse the injected stage05 Retriever with configured TopK/COSINE threshold. Format content, source, title and stable ID; map output to documents.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0"
+      },
+      "node_option": {
+        "output_key": "documents"
+      }
+    },
+    {
+      "id": "ChatTemplate",
+      "key": "ChatTemplate",
+      "name": "ChatTemplate",
+      "type": "ChatTemplate",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 360
+        }
+      },
+      "component_schema": {
+        "name": "ChatTemplate",
+        "component": "ChatTemplate",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline/ChatTemplate",
+        "input_type": {
+          "title": "map[string]any"
+        },
+        "output_type": {
+          "title": "[]*schema.Message"
+        },
+        "config": {
+          "description": "Use FString system prompt, history placeholder and user content; AllPredecessor joins the documents and conversation branches.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0"
+      },
+      "node_option": {}
+    },
+    {
+      "id": "ReActAgent",
+      "key": "ReActAgent",
+      "name": "ReActAgent",
+      "type": "Lambda",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 480
+        }
+      },
+      "component_schema": {
+        "name": "ReActAgent",
+        "component": "Lambda",
+        "component_source": "custom",
+        "identifier": "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline/ReActAgent",
+        "input_type": {
+          "title": "[]*schema.Message"
+        },
+        "output_type": {
+          "title": "*schema.Message"
+        },
+        "config": {
+          "description": "Custom Lambda wraps Eino ReAct Generate/Stream with injected ToolCallingChatModel and enabled tools. MaxSteps defaults to 12 and the total run budget to 60s. Stream classification supports text before tool calls; only final-answer chunks are forwarded.",
+          "schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "config_input": "{}"
+        },
+        "is_io_type_mutable": false,
+        "version": "1.0.0",
+        "extra_property": {
+          "schema": {
+            "type": "object",
+            "description": "",
+            "properties": {
+              "has_option": {
+                "type": "boolean",
+                "description": ""
+              },
+              "interaction_type": {
+                "type": "string",
+                "description": "",
+                "enum": [
+                  "invoke",
+                  "stream",
+                  "collect",
+                  "transform"
+                ]
+              },
+              "option_package_path": {
+                "type": "string",
+                "description": ""
+              },
+              "option_type_name": {
+                "type": "string",
+                "description": ""
+              }
+            },
+            "required": [
+              "interaction_type",
+              "has_option"
+            ]
+          },
+          "extra_property_input": "{\"has_option\":false,\"interaction_type\":\"invoke\"}"
+        }
+      },
+      "node_option": {}
+    },
+    {
+      "id": "end",
+      "key": "end",
+      "name": "end",
+      "type": "end",
+      "layoutData": {
+        "position": {
+          "x": 400,
+          "y": 600
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source_node_key": "start",
+      "target_node_key": "InputToRag",
+      "id": "start_InputToRag",
+      "name": "",
+      "sourceWorkflowNodeId": "start",
+      "targetWorkflowNodeId": "InputToRag"
+    },
+    {
+      "source_node_key": "start",
+      "target_node_key": "InputToChat",
+      "id": "start_InputToChat",
+      "name": "",
+      "sourceWorkflowNodeId": "start",
+      "targetWorkflowNodeId": "InputToChat"
+    },
+    {
+      "source_node_key": "InputToRag",
+      "target_node_key": "MilvusRetriever",
+      "id": "InputToRag_MilvusRetriever",
+      "name": "",
+      "sourceWorkflowNodeId": "InputToRag",
+      "targetWorkflowNodeId": "MilvusRetriever"
+    },
+    {
+      "source_node_key": "MilvusRetriever",
+      "target_node_key": "ChatTemplate",
+      "id": "MilvusRetriever_ChatTemplate",
+      "name": "",
+      "sourceWorkflowNodeId": "MilvusRetriever",
+      "targetWorkflowNodeId": "ChatTemplate"
+    },
+    {
+      "source_node_key": "InputToChat",
+      "target_node_key": "ChatTemplate",
+      "id": "InputToChat_ChatTemplate",
+      "name": "",
+      "sourceWorkflowNodeId": "InputToChat",
+      "targetWorkflowNodeId": "ChatTemplate"
+    },
+    {
+      "source_node_key": "ChatTemplate",
+      "target_node_key": "ReActAgent",
+      "id": "ChatTemplate_ReActAgent",
+      "name": "",
+      "sourceWorkflowNodeId": "ChatTemplate",
+      "targetWorkflowNodeId": "ReActAgent"
+    },
+    {
+      "source_node_key": "ReActAgent",
+      "target_node_key": "end",
+      "id": "ReActAgent_end",
+      "name": "",
+      "sourceWorkflowNodeId": "ReActAgent",
+      "targetWorkflowNodeId": "end"
+    }
+  ],
+  "branches": [],
+  "nodeCounter": {
+    "Lambda": 3,
+    "Retriever": 1,
+    "ChatTemplate": 1
+  }
+}

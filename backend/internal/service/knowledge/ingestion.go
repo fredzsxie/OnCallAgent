@@ -1,0 +1,122 @@
+package knowledge
+
+import (
+	"context"
+	"errors"
+	"io"
+	"path"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"github.com/cloudwego/eino/schema"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
+)
+
+var sourceLocks sync.Map
+var uploadLocks sync.Map
+
+func NormalizeSource(source string) (string, error) {
+	source = strings.ReplaceAll(source, "\\", "/")
+	if !utf8.ValidString(source) || len(source) > 4096 || source == "" || path.IsAbs(source) || strings.ContainsAny(source, "\x00\r\n") {
+		return "", ErrInvalidDocument
+	}
+	for _, part := range strings.Split(source, "/") {
+		if part == ".." {
+			return "", ErrInvalidDocument
+		}
+	}
+	source = path.Clean(source)
+	if !Supported(source) {
+		return "", ErrUnsupportedFormat
+	}
+	return source, nil
+}
+
+// Share write locks across graph instances without reacquiring an upload's save/invoke lock.
+func LockSource(ctx context.Context, source string) (func(), error) {
+	return lockSource(ctx, source, &sourceLocks)
+}
+
+func lockSource(ctx context.Context, source string, locks *sync.Map) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	value, _ := locks.LoadOrStore(digest(source), make(chan struct{}, 1))
+	lock := value.(chan struct{})
+	select {
+	case lock <- struct{}{}:
+		return func() { <-lock }, nil
+	case <-ctx.Done():
+		return nil, errors.Join(ErrRetryable, ctx.Err())
+	}
+}
+
+func ReadDocument(ctx context.Context, input io.Reader, maxBytes int64) ([]byte, error) {
+	if input == nil || maxBytes < 1 {
+		return nil, ErrInvalidDocument
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	data, err := io.ReadAll(io.LimitReader(input, maxBytes+1))
+	if err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, ErrTooLarge
+	}
+	if !utf8.Valid(data) || strings.ContainsRune(string(data), 0) || strings.TrimSpace(strings.TrimPrefix(string(data), "\ufeff")) == "" {
+		return nil, ErrInvalidDocument
+	}
+	return data, nil
+}
+
+func IndexChunks(ctx context.Context, store DocumentStore, docs []*schema.Document, batchSize int) (out []string, err error) {
+	started := time.Now()
+	defer func() { logger.Finish(ctx, "Index", "知识片段入库", started, err, logger.F("count", len(docs))) }()
+	if store == nil || len(docs) == 0 || docs[0] == nil || batchSize < 1 {
+		return nil, ErrInvalidDocument
+	}
+	documentID, _ := docs[0].MetaData["document_id"].(string)
+	version, _ := docs[0].MetaData["version"].(string)
+	for _, doc := range docs {
+		if doc == nil || doc.ID == "" || documentID == "" || version == "" || doc.MetaData["document_id"] != documentID || doc.MetaData["version"] != version {
+			return nil, ErrInvalidDocument
+		}
+	}
+	ids := make([]string, 0, len(docs))
+	for start := 0; start < len(docs); start += batchSize {
+		if err := ctx.Err(); err != nil {
+			return nil, errors.Join(ErrRetryable, err)
+		}
+		batch := docs[start:min(start+batchSize, len(docs))]
+		logger.Debug(ctx, "Index", "开始写入批次", logger.F("batch", start/batchSize+1), logger.F("count", len(batch)))
+		written, err := store.Store(ctx, batch)
+		if err != nil {
+			return nil, errors.Join(ErrRetryable, err)
+		}
+		if len(written) != len(batch) {
+			return nil, errors.Join(ErrRetryable, errors.New("store returned an incomplete batch"))
+		}
+		for i, id := range written {
+			if id != batch[i].ID {
+				return nil, errors.Join(ErrRetryable, errors.New("store returned unexpected document IDs"))
+			}
+		}
+		ids = append(ids, written...)
+		logger.Debug(ctx, "Index", "批次写入已确认", logger.F("batch", start/batchSize+1), logger.F("count", len(written)))
+	}
+	// Only remove old versions after every new chunk has been acknowledged.
+	if err := ctx.Err(); err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	if err := store.DeleteOld(ctx, documentID, version); err != nil {
+		return nil, errors.Join(ErrRetryable, err)
+	}
+	return ids, nil
+}

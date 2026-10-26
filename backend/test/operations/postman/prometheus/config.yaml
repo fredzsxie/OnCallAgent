@@ -1,0 +1,10 @@
+version: 1
+name: oncall-prometheus
+slug: oncall-prometheus
+protocol: http
+port: 4500
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
