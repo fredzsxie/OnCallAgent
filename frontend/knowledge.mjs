@@ -1,4 +1,4 @@
-import {responseJSON} from './api.mjs';
+import {responseJSON, validateFile} from './api.mjs';
 
 export const knowledgeTypes = {glossary: '专业术语', sop: '告警 SOP', reference: '参考资料'};
 export const scoreLabels = {cosine: '相似度', bm25: 'BM25 得分', rrf: '融合得分'};
@@ -80,4 +80,16 @@ export class KnowledgeTask {
     this.active = null; op.controller.abort(); this.update({status: 'cancelled', error: '已取消请求。'});
   }
   reset() { this.cancel(); this.update({status: 'idle', data: null, error: '', statusCode: 0}); }
+}
+
+export async function saveDocument({file, metadata, source = '', document: current, maxBytes = 10485760, signal, fetcher = fetch}) {
+  validateFile(file, maxBytes);
+  if (current && !validDocument(current)) throw new Error('当前文档信息无效，请重新加载。');
+  const body = new FormData(); body.append('file', file); body.append('metadata', JSON.stringify(metadata || {}));
+  if (current) body.append('expectedVersion', current.activeVersion);
+  else if (source.trim()) body.append('source', source.trim());
+  const data = await request(current ? `/api/knowledge/documents/${current.id}` : '/api/knowledge/documents',
+    {method: current ? 'PUT' : 'POST', body, signal}, fetcher);
+  if (!validDocument(data)) throw new Error('服务没有返回有效的知识入库结果。');
+  return data;
 }

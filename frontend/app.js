@@ -16,7 +16,10 @@ let opsTimer;
 const opsTask = new OpsTask({onChange: renderOps});
 const configuredMax = window.ONCALL_CONFIG?.uploadMaxBytes;
 const uploadMax = Number.isSafeInteger(configuredMax) && configuredMax > 0 ? configuredMax : 10485760;
-const knowledgeView = initKnowledgeView();
+const knowledgeView = initKnowledgeView({uploadMaxBytes: uploadMax, onBusy(busy, controller) {
+  if (busy) { operation = {kind: 'knowledge-upload', controller}; setBusy(); }
+  else if (operation?.kind === 'knowledge-upload') { operation = null; setBusy(); }
+}});
 const nodes = new Map();
 const persist = () => saveHistory(storage, state, warn);
 const dateText = timestamp => new Date(timestamp).toLocaleString('zh-CN', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});

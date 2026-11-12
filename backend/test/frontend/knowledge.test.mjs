@@ -40,3 +40,19 @@ test('cancelled and superseded knowledge requests cannot replace newer state', a
   task.cancel(); await task.run(async () => ({id: 'latest'})); rejectOld(new Error('late failure')); await pending;
   assert.equal(task.state.data.id, 'latest'); assert.equal(task.state.status, 'completed');
 });
+
+test('upload uses multipart metadata and freezes the expected version for updates', async () => {
+  const {saveDocument} = await import('../../../frontend/knowledge.mjs');
+  const file = new File(['# 回源\n定义'], 'origin.md', {type: 'text/markdown'});
+  const created = await saveDocument({file, metadata: {docType: 'glossary'}, source: 'cdn/origin.md', fetcher: async (url, init) => {
+    assert.equal(url, '/api/knowledge/documents'); assert.equal(init.method, 'POST'); assert.equal(init.body.get('source'), 'cdn/origin.md');
+    assert.equal(JSON.parse(init.body.get('metadata')).docType, 'glossary'); assert.equal(init.body.get('file').name, 'origin.md'); return response(doc);
+  }}); assert.equal(created.id, id);
+  await saveDocument({file, document: doc, metadata: {aliases: []}, fetcher: async (url, init) => {
+    assert.equal(url, `/api/knowledge/documents/${id}`); assert.equal(init.method, 'PUT'); assert.equal(init.body.get('expectedVersion'), version);
+    assert.deepEqual(JSON.parse(init.body.get('metadata')).aliases, []); return response(doc);
+  }});
+  await assert.rejects(saveDocument({file, document: doc, fetcher: async () => new Response(JSON.stringify({message: 'conflict', data: null}),
+    {status: 409, headers: {'Content-Type': 'application/json'}})}), err => err.status === 409 && err.message.includes('重新加载'));
+  await assert.rejects(saveDocument({file, maxBytes: 1, fetcher: () => assert.fail('oversize upload reached fetch')}), /超过/);
+});

@@ -68,7 +68,7 @@
       </section>
       <section id="knowledge-view" class="knowledge-view" aria-label="知识库" hidden>
         <div class="knowledge-content">
-          <div class="kb-heading"><div><p class="eyebrow">KNOWLEDGE / CDN</p><h2>知识库</h2><p>浏览专业术语与告警 SOP，检索可追溯的操作依据。</p></div></div>
+          <div class="kb-heading"><div><p class="eyebrow">KNOWLEDGE / CDN</p><h2>知识库</h2><p>浏览专业术语与告警 SOP，检索可追溯的操作依据。</p></div><button id="kb-upload-new" class="send-button" type="button">＋ 上传知识</button></div>
           <form id="kb-search" class="kb-search" role="search">
             <label class="kb-query-field">检索内容<input id="kb-query" type="search" maxlength="4096" placeholder="输入术语、告警名或排查问题…" required></label>
             <label>检索模式<select id="kb-mode"><option value="hybrid">混合检索</option><option value="dense">向量相似度</option><option value="bm25">BM25 关键词</option></select></label>
@@ -86,10 +86,29 @@
           <div class="kb-grid">
             <section class="kb-library" aria-label="文档目录"><div class="kb-section-heading"><h3>文档目录</h3><button id="kb-refresh" class="text-button" type="button">刷新</button></div><p id="kb-list-status" role="status"></p><div id="kb-list"></div><div class="kb-pagination"><button id="kb-prev" type="button">上一页</button><span id="kb-page"></span><button id="kb-next" type="button">下一页</button></div></section>
             <section id="kb-detail" class="kb-detail" aria-label="文档详情"><p id="kb-detail-status" role="status"></p><div id="kb-document-content" hidden>
-              <div class="kb-section-heading"><h3 id="kb-document-title"></h3><button id="kb-detail-reload" type="button" class="text-button">重新加载</button></div><p id="kb-document-meta"></p><p id="kb-document-source"></p><p id="kb-document-tags"></p><p id="kb-document-version" class="kb-version"></p><p id="kb-document-link"></p>
+              <div class="kb-section-heading"><h3 id="kb-document-title"></h3><div class="kb-document-actions"><button id="kb-upload-update" type="button" class="kb-button">更新文件</button><button id="kb-detail-reload" type="button" class="text-button">重新加载</button></div></div><p id="kb-document-meta"></p><p id="kb-document-source"></p><p id="kb-document-tags"></p><p id="kb-document-version" class="kb-version"></p><p id="kb-document-link"></p>
               <p id="kb-document-notice" class="notice" role="status" hidden></p><article id="kb-body" class="message-body kb-body"></article>
             </div><details id="kb-chunks-area" hidden><summary>索引切片</summary><p id="kb-chunk-status" role="status"></p><div id="kb-chunks"></div><div class="kb-pagination"><button id="kb-chunk-prev" type="button">上一页</button><span id="kb-chunk-page"></span><button id="kb-chunk-next" type="button">下一页</button></div></details></section>
           </div>
+          <dialog id="kb-upload-dialog" aria-labelledby="kb-upload-title">
+            <form id="kb-upload-form">
+              <div class="kb-section-heading"><h3 id="kb-upload-title">上传知识文件</h3><button id="kb-upload-close" type="button" class="text-button">关闭</button></div>
+              <p class="kb-form-hint">选择 Markdown 或 TXT 文件。表单填写值优先于文件元数据；新增文档的空白字段使用文件设置。</p>
+              <p id="kb-upload-version" class="kb-version"></p>
+              <fieldset id="kb-upload-fields"><div class="kb-upload-grid">
+                <label class="kb-wide">知识文件<input id="kb-upload-file" type="file" accept=".txt,.md,.markdown" required></label>
+                <label class="kb-wide">逻辑来源<input id="kb-upload-source" maxlength="4096" placeholder="默认使用文件名，例如 cdn/origin.md"></label>
+                <label>标题<input id="kb-upload-doc-title" maxlength="1024" placeholder="使用文件设置或文件名"></label>
+                <label>知识类型<select id="kb-upload-type"><option value="">使用文件设置（默认参考资料）</option><option value="glossary">专业术语</option><option value="sop">告警 SOP</option><option value="reference">参考资料</option></select></label>
+                <label>领域<input id="kb-upload-domain" maxlength="256" placeholder="cdn"></label><label>服务或模块<input id="kb-upload-service" maxlength="256" placeholder="edge"></label>
+                <label>标签<input id="kb-upload-tags" placeholder="逗号分隔"></label><label>别名或缩写<input id="kb-upload-aliases" placeholder="逗号分隔"></label>
+                <label class="kb-wide">告警标识<input id="kb-upload-alert-names" placeholder="多个告警名用逗号分隔"></label>
+                <label>负责人<input id="kb-upload-owner" maxlength="1024"></label><label>原始来源链接<input id="kb-upload-source-url" type="url" maxlength="1024" placeholder="https://…"></label>
+              </div></fieldset>
+              <p id="kb-upload-status" role="status"></p>
+              <div class="kb-upload-actions"><button id="kb-upload-reload" type="button" class="kb-button" hidden>关闭并加载最新版本</button><button id="kb-upload-cancel" type="button" class="stop-button" hidden>取消上传</button><button id="kb-upload-submit" type="submit" class="send-button">保存并入库</button></div>
+            </form>
+          </dialog>
         </div>
       </section>
     </main>
