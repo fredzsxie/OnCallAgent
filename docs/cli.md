@@ -138,3 +138,9 @@ curl -fsS http://127.0.0.1:52539/eino/devops/debug/v1/graphs
 Graph Schema 位于对应 agent 子目录，不标称编辑器导出文件。DevOps v0.1.7 的运行时画布可能插入 `parallel` 展示节点，不改变聊天业务图的七条边。该版本调试服务监听所有网络接口，仅用于受限开发环境，不应直接对外开放。
 
 `knowledge_cmd`、`chat_cmd`、`recall_cmd`、`tools_cmd`、`ai_ops_cmd` 可用 `--help` 查看参数。`modelcheck` 和 `init_knowledge` 没有 flag 帮助入口；直接执行会加载配置并调用依赖。
+
+## 知识库 v2 迁移
+
+在 backend 中执行 `GOTOOLCHAIN=local go run ./cmd/knowledge_migrate --source-collection oncall_knowledge --target-collection oncall_knowledge_v2`，默认仅预检查，不创建集合或文档目录。加 `--apply` 才写入目标集合，执行前停止知识写入。使用独立的 `ONCALL_KNOWLEDGE_CATALOG_PATH` 保存目标目录。
+
+报告包含源快照指纹、切片数、文档、缺失原文标识和版本冲突。冲突通过 `--versions selections.json` 显式选择，格式为逻辑来源到旧版本的 JSON 映射。迁移可重复执行；缺失原文时导入历史片段并标记 indexOnly。应用完成后再次读取源快照，确认迁移期间没有变化。仅在报告 verified=true 且检索验收通过后切换服务配置。
