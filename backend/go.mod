@@ -15,6 +15,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	go.opentelemetry.io/otel/trace v1.28.0
 	google.golang.org/grpc v1.65.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.5
 )
 
@@ -160,7 +161,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apimachinery v0.28.6 // indirect
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
