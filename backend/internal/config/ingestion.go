@@ -8,6 +8,7 @@ import (
 )
 
 type Knowledge struct {
+	CatalogPath    string
 	FileDir        string
 	MaxUploadBytes int64
 	ChunkSize      int
@@ -23,6 +24,13 @@ func LoadKnowledge() (Knowledge, error) {
 	}
 	if c.FileDir, err = filepath.Abs(c.FileDir); err != nil {
 		return c, fmt.Errorf("cannot resolve ONCALL_FILE_DIR")
+	}
+	c.CatalogPath = env("ONCALL_KNOWLEDGE_CATALOG_PATH", filepath.Join(c.FileDir, "catalog.sqlite"))
+	if c.CatalogPath == "" {
+		return c, fmt.Errorf("ONCALL_KNOWLEDGE_CATALOG_PATH must not be empty")
+	}
+	if c.CatalogPath, err = filepath.Abs(c.CatalogPath); err != nil {
+		return c, err
 	}
 	if c.MaxUploadBytes, err = strconv.ParseInt(env("ONCALL_UPLOAD_MAX_BYTES", "10485760"), 10, 64); err != nil {
 		return c, fmt.Errorf("ONCALL_UPLOAD_MAX_BYTES must be a positive integer")
