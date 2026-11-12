@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 
@@ -20,6 +21,12 @@ func Schema(collection string, dimension int) *entity.Schema {
 }
 
 func SchemaDiff(actual *entity.Schema, dimension int) []string {
+	return schemaDiff(actual, Schema("", dimension))
+}
+func SchemaDiffV2(actual *entity.Schema, dimension int) []string {
+	return schemaDiff(actual, SchemaV2("", dimension))
+}
+func schemaDiff(actual, wanted *entity.Schema) []string {
 	diffs := []string{}
 	if actual == nil {
 		return []string{"collection schema is missing"}
@@ -30,7 +37,6 @@ func SchemaDiff(actual *entity.Schema, dimension int) []string {
 	if actual.EnableDynamicField {
 		diffs = append(diffs, "dynamic fields: expected false, got true")
 	}
-	wanted := Schema(actual.CollectionName, dimension)
 	fields := map[string]*entity.Field{}
 	for _, f := range actual.Fields {
 		fields[f.Name] = f
@@ -60,6 +66,16 @@ func SchemaDiff(actual *entity.Schema, dimension int) []string {
 	for name := range fields {
 		diffs = append(diffs, name+": unexpected field")
 	}
+	if len(actual.Functions) != len(wanted.Functions) {
+		diffs = append(diffs, "BM25 function count differs")
+	} else {
+		for i, f := range wanted.Functions {
+			a := actual.Functions[i]
+			if a.Name != f.Name || a.Type != f.Type || !reflect.DeepEqual(a.InputFieldNames, f.InputFieldNames) || !reflect.DeepEqual(a.OutputFieldNames, f.OutputFieldNames) {
+				diffs = append(diffs, "BM25 function differs")
+			}
+		}
+	}
 	sort.Strings(diffs)
 	return diffs
 }
@@ -74,4 +90,26 @@ func VectorDimension(s *entity.Schema) int {
 		}
 	}
 	return 0
+}
+
+func SchemaV2(collection string, dimension int) *entity.Schema {
+	s := Schema(collection, dimension)
+	for _, name := range []string{"document_id", "version", "doc_type", "domain", "service"} {
+		s.WithField(entity.NewField().WithName(name).WithDataType(entity.FieldTypeVarChar).WithMaxLength(256))
+	}
+	s.WithField(entity.NewField().WithName("chunk_index").WithDataType(entity.FieldTypeInt64))
+	s.WithField(entity.NewField().WithName("search_text").WithDataType(entity.FieldTypeVarChar).WithMaxLength(ContentMaxLength).WithEnableAnalyzer(true).WithAnalyzerParams(map[string]any{"tokenizer": "jieba", "filter": []string{"lowercase"}}))
+	s.WithField(entity.NewField().WithName("sparse_vector").WithDataType(entity.FieldTypeSparseVector))
+	s.WithFunction(entity.NewFunction().WithName("knowledge_bm25").WithType(entity.FunctionTypeBM25).WithInputFields("search_text").WithOutputFields("sparse_vector"))
+	return s
+}
+func isV2(s *entity.Schema) bool {
+	if s != nil {
+		for _, f := range s.Fields {
+			if f.Name == "sparse_vector" {
+				return true
+			}
+		}
+	}
+	return false
 }

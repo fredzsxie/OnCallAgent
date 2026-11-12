@@ -248,7 +248,7 @@ func (c *Catalog) Publish(ctx context.Context, id, version string, count int) er
 	if n != 1 {
 		return ErrConflict
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE versions SET state='ready',chunk_count=?,error='' WHERE document_id=? AND version=?`, count, id, version); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE versions SET state='cleanup_pending',chunk_count=?,error='' WHERE document_id=? AND version=?`, count, id, version); err != nil {
 		return err
 	}
 	return tx.Commit()

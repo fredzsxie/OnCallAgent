@@ -27,6 +27,7 @@ type Store struct {
 	embedding embedding.Embedder
 	cfg       config.Milvus
 	dimension int
+	v2        bool
 }
 
 var _ indexer.Indexer = (*Store)(nil)
@@ -46,7 +47,12 @@ func NewStore(ctx context.Context, db client.Milvus, emb embedding.Embedder, cfg
 	if dimension < 1 {
 		return nil, errors.New("collection must contain a FLOAT_VECTOR field with a positive dimension")
 	}
-	if diff := SchemaDiff(collection.Schema, dimension); len(diff) != 0 {
+	wanted := Schema(cfg.Collection, dimension)
+	v2 := isV2(collection.Schema)
+	if v2 {
+		wanted = SchemaV2(cfg.Collection, dimension)
+	}
+	if diff := schemaDiff(collection.Schema, wanted); len(diff) != 0 {
 		return nil, fmt.Errorf("existing collection differs: %s", strings.Join(diff, "; "))
 	}
 	hasIndex, err := vectorIndex(ctx, db, cfg.Collection)
@@ -57,7 +63,16 @@ func NewStore(ctx context.Context, db client.Milvus, emb embedding.Embedder, cfg
 		return nil, errors.New("vector index is missing; run init_knowledge first")
 	}
 	logger.Info(ctx, "Milvus", "集合校验完成", logger.F("dimension", dimension), logger.F("metric", "COSINE"))
-	return &Store{db, emb, cfg, dimension}, nil
+	if v2 {
+		ok, err := checkIndex(ctx, db, cfg.Collection, "sparse_vector", "SPARSE_INVERTED_INDEX", "BM25")
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("BM25 index is missing; run init_knowledge first")
+		}
+	}
+	return &Store{db: db, embedding: emb, cfg: cfg, dimension: dimension, v2: v2}, nil
 }
 
 func NewID() (string, error) {
@@ -107,8 +122,19 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
+	embedTexts := append([]string(nil), texts...)
+	if s.v2 {
+		for i, d := range docs {
+			if text, ok := d.MetaData["search_text"].(string); ok && text != "" {
+				if len(text) > ContentMaxLength {
+					return nil, ErrInvalidDocument
+				}
+				embedTexts[i] = text
+			}
+		}
+	}
 	stage = "embedding"
-	vectors, err := s.embedding.EmbedStrings(ctx, texts)
+	vectors, err := s.embedding.EmbedStrings(ctx, embedTexts)
 	if err != nil {
 		return nil, err
 	}
@@ -123,9 +149,11 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 		}
 	}
 	stage = "upsert"
-	written, err := s.db.Upsert(ctx, s.cfg.Collection,
-		column.NewColumnVarChar("id", ids), column.NewColumnVarChar("content", texts),
-		column.NewColumnJSONBytes("metadata", metadata), column.NewColumnFloatVector("vector", s.dimension, values))
+	cols := []column.Column{column.NewColumnVarChar("id", ids), column.NewColumnVarChar("content", texts), column.NewColumnJSONBytes("metadata", metadata), column.NewColumnFloatVector("vector", s.dimension, values)}
+	if s.v2 {
+		cols = append(cols, v2Columns(docs, embedTexts)...)
+	}
+	written, err := s.db.Upsert(ctx, s.cfg.Collection, cols...)
 	if err != nil {
 		return nil, operationError(ctx, "upsert documents", err)
 	}
@@ -240,4 +268,65 @@ func (s *Store) DeleteOld(ctx context.Context, documentID, version string) (err 
 		return operationError(ctx, "delete old document chunks", err)
 	}
 	return nil
+}
+
+func (s *Store) HybridEnabled() bool { return s.v2 }
+func (s *Store) Profile(model string) string {
+	return fmt.Sprintf("%s/%s/%s:%d:jieba-lowercase:v2", s.cfg.Database, s.cfg.Collection, model, s.dimension)
+}
+func v2Columns(docs []*schema.Document, texts []string) []column.Column {
+	fields := map[string][]string{}
+	for _, name := range []string{"document_id", "version", "doc_type", "domain", "service"} {
+		fields[name] = make([]string, len(docs))
+	}
+	indexes := make([]int64, len(docs))
+	for i, d := range docs {
+		for name := range fields {
+			key := name
+			if key == "doc_type" {
+				key = "docType"
+			}
+			fields[name][i], _ = d.MetaData[key].(string)
+		}
+		if fields["doc_type"][i] == "" {
+			fields["doc_type"][i] = "reference"
+		}
+		switch n := d.MetaData["chunk_index"].(type) {
+		case int:
+			indexes[i] = int64(n)
+		case float64:
+			indexes[i] = int64(n)
+		case int64:
+			indexes[i] = n
+		}
+	}
+	cols := []column.Column{}
+	for _, name := range []string{"document_id", "version", "doc_type", "domain", "service"} {
+		cols = append(cols, column.NewColumnVarChar(name, fields[name]))
+	}
+	return append(cols, column.NewColumnInt64("chunk_index", indexes), column.NewColumnVarChar("search_text", texts))
+}
+
+func validHash(value string) bool {
+	raw, err := hex.DecodeString(value)
+	return err == nil && len(raw) == 32
+}
+func decodeDocument(ids, contents, metas column.Column, i int) (*schema.Document, error) {
+	id, err := ids.GetAsString(i)
+	if err != nil {
+		return nil, ErrInvalidDocument
+	}
+	text, err := contents.GetAsString(i)
+	if err != nil {
+		return nil, ErrInvalidDocument
+	}
+	raw, err := client.JSONAt(metas, i)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]any{}
+	if err = json.Unmarshal(raw, &m); err != nil || m == nil {
+		return nil, ErrInvalidDocument
+	}
+	return &schema.Document{ID: id, Content: text, MetaData: m}, nil
 }
