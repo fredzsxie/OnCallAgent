@@ -8,6 +8,8 @@ export function initKnowledgeView({uploadMaxBytes = 10485760, onBusy = () => {}}
   let page = 1, selected = null, chunkPage = 1, citation = null, writeTarget = null;
   const filters = () => ({docType: $('kb-type').value, domain: $('kb-domain').value.trim(), service: $('kb-service').value.trim(),
     tags: $('kb-tags').value.split(/[,，]/).map(v => v.trim()).filter(Boolean), alertName: $('kb-alert').value.trim()});
+  const searchFilters = () => ({docType: $('kb-search-type').value, domain: $('kb-search-domain').value.trim(), service: $('kb-search-service').value.trim(),
+    tags: $('kb-search-tags').value.split(/[,，]/).map(v => v.trim()).filter(Boolean), alertName: $('kb-search-alert').value.trim()});
   const message = (node, task, empty) => {
     node.textContent = task.status === 'loading' ? '正在加载…' : ['failed', 'cancelled'].includes(task.status) ? task.error : empty;
     node.classList.toggle('error', task.status === 'failed');
@@ -79,13 +81,15 @@ export function initKnowledgeView({uploadMaxBytes = 10485760, onBusy = () => {}}
   function renderSearch(task) {
     $('kb-search-submit').disabled = task.status === 'loading'; $('kb-search-cancel').hidden = task.status !== 'loading';
     $('kb-results-area').hidden = task.status === 'idle';
+    $('kb-search-empty').hidden = task.status !== 'idle';
+    $('kb-results-area').setAttribute('aria-busy', String(task.status === 'loading'));
     const data = task.data;
     message($('kb-search-status'), task, data ? `${data.documents.length} 个片段 · ${scoreLabels[data.scoreType]}${Number.isFinite(data.durationMs) ? ' · ' + data.durationMs + ' ms' : ''}` : '');
     $('kb-results').replaceChildren();
     if (task.status === 'completed' && !data?.documents.length) $('kb-results').append(create('p', '没有匹配的已发布知识。可以调整查询或过滤条件。', 'kb-empty'));
     for (const hit of data?.documents || []) {
       const item = create('article', '', 'kb-result');
-      const button = create('button', hit.title || hit.source, 'kb-result-title'); button.type = 'button'; button.addEventListener('click', () => void openDocument(hit.documentId, hit));
+      const button = create('button', hit.title || hit.source, 'kb-result-title'); button.type = 'button'; button.addEventListener('click', () => { $('kb-search-dialog').close(); void openDocument(hit.documentId, hit); });
       item.append(button, create('span', `${scoreLabels[hit.scoreType]} ${hit.score.toFixed(4)}`, 'kb-score'), create('small', `${hit.source}${hit.sectionPath ? ' / ' + hit.sectionPath : ''}`));
       const body = create('div', '', 'message-body'); renderAnswer(body, hit.content); item.append(body); $('kb-results').append(item);
     }
@@ -129,10 +133,21 @@ export function initKnowledgeView({uploadMaxBytes = 10485760, onBusy = () => {}}
     if (!data) return;
     $('kb-upload-dialog').close(); page = 1; search.reset(); await loadList(); await openDocument(data.id);
   });
-  $('kb-search').addEventListener('submit', event => { event.preventDefault(); void search.run(signal => searchKnowledge({query: $('kb-query').value, mode: $('kb-mode').value, topK: Number($('kb-top-k').value), filters: filters(), signal})); });
+  $('kb-search-open').addEventListener('click', () => { $('kb-search-dialog').showModal(); $('kb-query').focus(); });
+  for (const id of ['kb-search-close', 'kb-search-dismiss']) $(id).addEventListener('click', () => $('kb-search-dialog').close());
+  // Closing cancels the request before a late response can replace the retained modal state.
+  $('kb-search-dialog').addEventListener('close', () => search.cancel());
+  // Search inputs consume Escape to clear text; close consistently without losing the query.
+  $('kb-search-dialog').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); $('kb-search-dialog').close(); } });
+  let searchBackdropDown = false;
+  const outsideSearch = event => { const r = $('kb-search-dialog').getBoundingClientRect(); return event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom; };
+  $('kb-search-dialog').addEventListener('pointerdown', event => { searchBackdropDown = event.target === $('kb-search-dialog') && outsideSearch(event); });
+  $('kb-search-dialog').addEventListener('click', event => { if (searchBackdropDown && event.target === $('kb-search-dialog') && outsideSearch(event)) $('kb-search-dialog').close(); searchBackdropDown = false; });
+  $('kb-search-reset').addEventListener('click', () => { search.reset(); $('kb-search').reset(); $('kb-query').focus(); });
+  $('kb-search').addEventListener('submit', event => { event.preventDefault(); search.update({data: null}); void search.run(signal => searchKnowledge({query: $('kb-query').value, mode: $('kb-mode').value, topK: Number($('kb-top-k').value), filters: searchFilters(), signal})); });
   $('kb-search-cancel').addEventListener('click', () => search.cancel());
-  $('kb-filters').addEventListener('submit', event => { event.preventDefault(); page = 1; search.reset(); void loadList(); });
-  $('kb-filter-reset').addEventListener('click', () => { $('kb-filters').reset(); page = 1; search.reset(); void loadList(); });
+  $('kb-filters').addEventListener('submit', event => { event.preventDefault(); page = 1; void loadList(); });
+  $('kb-filter-reset').addEventListener('click', () => { $('kb-filters').reset(); page = 1; void loadList(); });
   $('kb-refresh').addEventListener('click', () => void loadList());
   $('kb-prev').addEventListener('click', () => { page--; void loadList(); });
   $('kb-next').addEventListener('click', () => { page++; void loadList(); });
@@ -141,6 +156,6 @@ export function initKnowledgeView({uploadMaxBytes = 10485760, onBusy = () => {}}
   $('kb-chunk-prev').addEventListener('click', () => { chunkPage--; void loadChunks(); });
   $('kb-chunk-next').addEventListener('click', () => { chunkPage++; void loadChunks(); });
   renderList(list.state); renderDetail(detail.state); renderSearch(search.state); renderChunks(chunks.state); renderWrite(write.state);
-  return {enter() { void loadList(); }, leave() { for (const task of [list, detail, chunks, search, write]) task.cancel(); },
+  return {enter() { void loadList(); }, leave() { $('kb-search-dialog').close(); for (const task of [list, detail, chunks, search, write]) task.cancel(); },
     getSelected: () => selected, refresh: loadList, openDocument};
 }
