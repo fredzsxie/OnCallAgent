@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/entity"
 )
 
 const IDMaxLength = 256

@@ -22,8 +22,6 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/joho/godotenv"
-	milvus "github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
 type failingBatch struct {
@@ -100,12 +98,12 @@ func TestUploadIntegration(t *testing.T) {
 	docID := hex.EncodeToString(docSum[:])
 	query := func() (ids []string, versions map[string]bool) {
 		t.Helper()
-		columns, err := db.Query(ctx, dbCfg.Collection, nil, fmt.Sprintf(`metadata["document_id"] == "%s"`, docID), []string{"id", "metadata"}, milvus.WithSearchQueryConsistencyLevel(entity.ClStrong))
+		columns, err := db.Query(ctx, dbCfg.Collection, fmt.Sprintf(`metadata["document_id"] == "%s"`, docID), []string{"id", "metadata"}, 16384, 0)
 		if err != nil {
 			t.Fatal("querying acceptance chunks:", err)
 		}
 		versions = map[string]bool{}
-		idColumn, metadata := columns.GetColumn("id"), columns.GetColumn("metadata")
+		idColumn, metadata := client.Column(columns, "id"), client.Column(columns, "metadata")
 		if idColumn == nil || metadata == nil {
 			t.Fatal("missing query fields")
 		}
@@ -114,7 +112,7 @@ func TestUploadIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw, err := metadata.GetAsString(i)
+			raw, err := client.JSONAt(metadata, i)
 			if err != nil {
 				t.Fatal(err)
 			}

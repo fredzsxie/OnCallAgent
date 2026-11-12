@@ -16,8 +16,6 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/joho/godotenv"
-	milvus "github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
 func TestPipelineIntegration(t *testing.T) {
@@ -74,11 +72,11 @@ func TestPipelineIntegration(t *testing.T) {
 	documentID := hex.EncodeToString(sum[:])
 	query := func() []string {
 		t.Helper()
-		result, err := db.Query(ctx, dbCfg.Collection, nil, fmt.Sprintf(`metadata["document_id"] == "%s"`, documentID), []string{"id"}, milvus.WithSearchQueryConsistencyLevel(entity.ClStrong))
+		result, err := db.Query(ctx, dbCfg.Collection, fmt.Sprintf(`metadata["document_id"] == "%s"`, documentID), []string{"id"}, 16384, 0)
 		if err != nil {
 			t.Fatal("querying visible acceptance IDs:", err)
 		}
-		column := result.GetColumn("id")
+		column := client.Column(result, "id")
 		if column == nil {
 			t.Fatal("missing ID column")
 		}

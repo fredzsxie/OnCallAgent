@@ -52,7 +52,7 @@ flowchart TB
 | Eino / DevOps | v0.6.0 / v0.1.7 |
 | ChatModel | Eino OpenAI 扩展 v0.1.1，模型须支持工具调用 |
 | Embedding | Eino Ark 扩展 v0.1.2；豆包多模态接口处理文本 |
-| Milvus | Go SDK v2.4.2；已有 v2.4.1 服务联调记录，其他版本需自行验证 |
+| Milvus | Go SDK client/v2 v2.5.2；目标环境需独立验证 |
 | 前端 | 原生 HTML/CSS/JavaScript；开发服务器使用 Node.js 20+ |
 
 完整 Go 依赖锁定于 [go.mod](backend/go.mod) 和 [go.sum](backend/go.sum)。浏览器 Markdown 依赖随仓库提供，版本与许可证见[第三方依赖说明](frontend/vendor/README.md)。

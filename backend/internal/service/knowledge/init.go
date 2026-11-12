@@ -9,13 +9,13 @@ import (
 
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	localclient "github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/index"
 )
 
-func Init(ctx context.Context, db client.Client, emb embedding.Embedder, cfg config.Milvus) (dimensionResult int, err error) {
+func Init(ctx context.Context, db client.Milvus, emb embedding.Embedder, cfg config.Milvus) (dimensionResult int, err error) {
 	started := time.Now()
 	defer func() {
 		logger.Finish(ctx, "Milvus", "集合初始化", started, err, logger.F("dimension", dimensionResult))
@@ -30,7 +30,7 @@ func Init(ctx context.Context, db client.Client, emb embedding.Embedder, cfg con
 		return 0, errors.New("expected one embedding for dimension detection")
 	}
 	dimension := len(vectors[0])
-	if _, err := localclient.FloatVector(vectors[0], dimension); err != nil {
+	if _, err := client.FloatVector(vectors[0], dimension); err != nil {
 		return 0, err
 	}
 	exists, err := db.HasCollection(ctx, cfg.Collection)
@@ -50,25 +50,22 @@ func Init(ctx context.Context, db client.Client, emb embedding.Embedder, cfg con
 		if hasIndex, err = vectorIndex(ctx, db, cfg.Collection); err != nil {
 			return 0, err
 		}
-	} else if err := db.CreateCollection(ctx, Schema(cfg.Collection, dimension), 1, client.WithConsistencyLevel(entity.ClStrong)); err != nil {
+	} else if err := db.CreateCollection(ctx, Schema(cfg.Collection, dimension)); err != nil {
 		return 0, operationError(ctx, "create collection", err)
 	}
 	if !hasIndex {
-		index, err := entity.NewIndexHNSW(entity.COSINE, 16, 128)
-		if err != nil {
-			return 0, err
-		}
-		if err := db.CreateIndex(ctx, cfg.Collection, "vector", index, false, client.WithIndexName("vector_cosine")); err != nil {
+		idx := index.NewHNSWIndex(entity.COSINE, 16, 128)
+		if err := db.CreateIndex(ctx, cfg.Collection, "vector", idx); err != nil {
 			return 0, operationError(ctx, "create vector index", err)
 		}
 	}
-	if err := db.LoadCollection(ctx, cfg.Collection, false); err != nil {
+	if err := db.LoadCollection(ctx, cfg.Collection); err != nil {
 		return 0, operationError(ctx, "load collection", err)
 	}
 	return dimension, nil
 }
 
-func vectorIndex(ctx context.Context, db client.Client, collection string) (bool, error) {
+func vectorIndex(ctx context.Context, db client.Milvus, collection string) (bool, error) {
 	indexes, err := db.DescribeIndex(ctx, collection, "vector")
 	if err != nil {
 		// SDK 2.4 returns an untyped error when the vector index does not exist.
@@ -77,9 +74,9 @@ func vectorIndex(ctx context.Context, db client.Client, collection string) (bool
 		}
 		return false, operationError(ctx, "describe vector index", err)
 	}
-	for _, index := range indexes {
-		if index.IndexType() != entity.HNSW || index.Params()["metric_type"] != string(entity.COSINE) {
-			return false, fmt.Errorf("existing vector index differs: expected HNSW/COSINE, got %s/%s", index.IndexType(), index.Params()["metric_type"])
+	for _, def := range indexes {
+		if def.Params()["index_type"] != string(index.HNSW) || def.Params()["metric_type"] != string(entity.COSINE) {
+			return false, fmt.Errorf("existing vector index differs: expected HNSW/COSINE, got %s/%s", def.Params()["index_type"], def.Params()["metric_type"])
 		}
 	}
 	return len(indexes) > 0, nil

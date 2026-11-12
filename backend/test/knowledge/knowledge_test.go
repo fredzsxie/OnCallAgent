@@ -14,22 +14,25 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/milvus-io/milvus/client/v2/column"
+	"github.com/milvus-io/milvus/client/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/index"
+	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
 type fakeDB struct {
-	client.Client
+	client.Milvus
 	exists               bool
 	schema               *entity.Schema
-	index                entity.Index
+	index                index.Index
 	loaded               bool
 	creates, upserts     int
-	columns              []entity.Column
+	columns              []column.Column
 	searchCalls, searchK int
 	searchVectors        []entity.Vector
 	searchMetric         entity.MetricType
-	searchParam          entity.SearchParam
+	searchParam          index.AnnParam
 	indexErr             error
 	deleteExpr           string
 }
@@ -38,36 +41,36 @@ func (f *fakeDB) HasCollection(context.Context, string) (bool, error) { return f
 func (f *fakeDB) DescribeCollection(context.Context, string) (*entity.Collection, error) {
 	return &entity.Collection{Schema: f.schema}, nil
 }
-func (f *fakeDB) DescribeIndex(_ context.Context, _ string, field string, _ ...client.IndexOption) ([]entity.Index, error) {
+func (f *fakeDB) DescribeIndex(_ context.Context, _ string, field string) ([]index.Index, error) {
 	if f.indexErr != nil {
 		return nil, f.indexErr
 	}
 	if field == "vector" && f.index != nil {
-		return []entity.Index{f.index}, nil
+		return []index.Index{f.index}, nil
 	}
 	return nil, errors.New("index not found")
 }
-func (f *fakeDB) CreateCollection(_ context.Context, s *entity.Schema, _ int32, _ ...client.CreateCollectionOption) error {
+func (f *fakeDB) CreateCollection(_ context.Context, s *entity.Schema) error {
 	f.exists = true
 	f.schema = s
 	f.creates++
 	return nil
 }
-func (f *fakeDB) CreateIndex(_ context.Context, _, _ string, index entity.Index, _ bool, _ ...client.IndexOption) error {
-	f.index = index
+func (f *fakeDB) CreateIndex(_ context.Context, _, _ string, idx index.Index) error {
+	f.index = idx
 	f.creates++
 	return nil
 }
-func (f *fakeDB) LoadCollection(context.Context, string, bool, ...client.LoadCollectionOption) error {
+func (f *fakeDB) LoadCollection(context.Context, string) error {
 	f.loaded = true
 	return nil
 }
-func (f *fakeDB) Upsert(_ context.Context, _, _ string, cols ...entity.Column) (entity.Column, error) {
+func (f *fakeDB) Upsert(_ context.Context, _ string, cols ...column.Column) (column.Column, error) {
 	f.upserts++
 	f.columns = cols
 	return cols[0], nil
 }
-func (f *fakeDB) Delete(ctx context.Context, _ string, _ string, expression string) error {
+func (f *fakeDB) Delete(ctx context.Context, _ string, expression string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -75,7 +78,7 @@ func (f *fakeDB) Delete(ctx context.Context, _ string, _ string, expression stri
 	return nil
 }
 
-func (f *fakeDB) Search(ctx context.Context, _ string, _ []string, _ string, fields []string, vectors []entity.Vector, field string, metric entity.MetricType, k int, sp entity.SearchParam, _ ...client.SearchQueryOptionFunc) ([]client.SearchResult, error) {
+func (f *fakeDB) Search(ctx context.Context, _ string, _ string, fields []string, vectors []entity.Vector, field string, metric entity.MetricType, k int, sp index.AnnParam) ([]milvusclient.ResultSet, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -85,7 +88,7 @@ func (f *fakeDB) Search(ctx context.Context, _ string, _ []string, _ string, fie
 	f.searchCalls++
 	f.searchK, f.searchVectors = k, vectors
 	f.searchMetric, f.searchParam = metric, sp
-	return []client.SearchResult{{ResultCount: 1, IDs: f.columns[0], Fields: client.ResultSet{f.columns[1], f.columns[2]}, Scores: []float32{1}}}, nil
+	return []milvusclient.ResultSet{{ResultCount: 1, IDs: f.columns[0], Fields: milvusclient.DataSet{f.columns[1], f.columns[2]}, Scores: []float32{1}}}, nil
 }
 
 type embed struct{ vector []float64 }
@@ -126,11 +129,11 @@ func TestInitPreservesMismatchedCollection(t *testing.T) {
 		{"binary", func(f *fakeDB) { f.schema.Fields[3].DataType = entity.FieldTypeBinaryVector }},
 		{"primary_key", func(f *fakeDB) { f.schema.Fields[0].AutoID = true }},
 		{"content_length", func(f *fakeDB) { f.schema.Fields[1].TypeParams["max_length"] = "8192" }},
-		{"metric", func(f *fakeDB) { f.index, _ = entity.NewIndexHNSW(entity.L2, 16, 128) }},
+		{"metric", func(f *fakeDB) { f.index = index.NewHNSWIndex(entity.L2, 16, 128) }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeDB{exists: true, schema: knowledge.Schema(cfg().Collection, 3)}
-			f.index, _ = entity.NewIndexHNSW(entity.COSINE, 16, 128)
+			f.index = index.NewHNSWIndex(entity.COSINE, 16, 128)
 			tt.change(f)
 			r, err := knowledge.Init(context.Background(), f, embed{[]float64{1, 2, 3}}, cfg())
 			if err == nil || r != 0 || f.creates != 0 || f.loaded {
@@ -162,10 +165,10 @@ func TestStoreAndCosineRetrieval(t *testing.T) {
 		t.Fatalf("store failed: %v", err)
 	}
 	v, err := f.columns[3].Get(0)
-	if err != nil || !reflect.DeepEqual(v, []float32{1, 2, 3}) {
+	if err != nil || !reflect.DeepEqual(v, entity.FloatVector{1, 2, 3}) {
 		t.Fatalf("incorrect float vector: %v %v", v, err)
 	}
-	raw, _ := f.columns[2].GetAsString(0)
+	raw, _ := client.JSONAt(f.columns[2], 0)
 	var metadata map[string]any
 	if json.Unmarshal([]byte(raw), &metadata) != nil || metadata["source"] != "runbook" {
 		t.Fatal("metadata was not preserved")

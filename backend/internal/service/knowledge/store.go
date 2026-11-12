@@ -15,14 +15,15 @@ import (
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	localclient "github.com/fredzsxie/OnCallAgent/backend/utility/client"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/column"
+	"github.com/milvus-io/milvus/client/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/index"
 )
 
 type Store struct {
-	db        client.Client
+	db        client.Milvus
 	embedding embedding.Embedder
 	cfg       config.Milvus
 	dimension int
@@ -31,7 +32,7 @@ type Store struct {
 var _ indexer.Indexer = (*Store)(nil)
 var _ retriever.Retriever = (*Store)(nil)
 
-func NewStore(ctx context.Context, db client.Client, emb embedding.Embedder, cfg config.Milvus) (*Store, error) {
+func NewStore(ctx context.Context, db client.Milvus, emb embedding.Embedder, cfg config.Milvus) (*Store, error) {
 	if db == nil || emb == nil {
 		return nil, errors.New("Milvus and embedding are required")
 	}
@@ -117,14 +118,14 @@ func (s *Store) Store(ctx context.Context, docs []*schema.Document, opts ...inde
 	values := make([][]float32, len(vectors))
 	// FLOAT_VECTOR stores numeric float32 values, never float bytes as BINARY_VECTOR.
 	for i, vector := range vectors {
-		if values[i], err = localclient.FloatVector(vector, s.dimension); err != nil {
+		if values[i], err = client.FloatVector(vector, s.dimension); err != nil {
 			return nil, err
 		}
 	}
 	stage = "upsert"
-	written, err := s.db.Upsert(ctx, s.cfg.Collection, "",
-		entity.NewColumnVarChar("id", ids), entity.NewColumnVarChar("content", texts),
-		entity.NewColumnJSONBytes("metadata", metadata), entity.NewColumnFloatVector("vector", s.dimension, values))
+	written, err := s.db.Upsert(ctx, s.cfg.Collection,
+		column.NewColumnVarChar("id", ids), column.NewColumnVarChar("content", texts),
+		column.NewColumnJSONBytes("metadata", metadata), column.NewColumnFloatVector("vector", s.dimension, values))
 	if err != nil {
 		return nil, operationError(ctx, "upsert documents", err)
 	}
@@ -168,7 +169,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	if len(vectors) != 1 {
 		return nil, errors.New("expected one query embedding")
 	}
-	vector, err := localclient.FloatVector(vectors[0], s.dimension)
+	vector, err := client.FloatVector(vectors[0], s.dimension)
 	if err != nil {
 		return nil, err
 	}
@@ -176,13 +177,10 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	if topK > ef {
 		ef = topK
 	}
-	searchParam, err := entity.NewIndexHNSWSearchParam(ef)
-	if err != nil {
-		return nil, err
-	}
+	searchParam := index.NewHNSWAnnParam(ef)
 	// Strong consistency makes a completed write visible to the following verification search.
 	stage = "search"
-	results, err := s.db.Search(ctx, s.cfg.Collection, nil, "", []string{"content", "metadata"}, []entity.Vector{entity.FloatVector(vector)}, "vector", entity.COSINE, topK, searchParam, client.WithSearchQueryConsistencyLevel(entity.ClStrong))
+	results, err := s.db.Search(ctx, s.cfg.Collection, "", []string{"content", "metadata"}, []entity.Vector{entity.FloatVector(vector)}, "vector", entity.COSINE, topK, searchParam)
 	if err != nil {
 		return nil, operationError(ctx, "search vectors", err)
 	}
@@ -194,7 +192,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 	if r.ResultCount == 0 {
 		return docs, nil
 	}
-	content, metadata := r.Fields.GetColumn("content"), r.Fields.GetColumn("metadata")
+	content, metadata := r.GetColumn("content"), r.GetColumn("metadata")
 	if r.IDs == nil || content == nil || metadata == nil || len(r.Scores) != r.ResultCount {
 		return nil, errors.New("Milvus result fields are incomplete")
 	}
@@ -210,7 +208,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, opts ...retriever.Op
 		if err != nil {
 			return nil, errors.New("invalid result content")
 		}
-		raw, err := metadata.GetAsString(i)
+		raw, err := client.JSONAt(metadata, i)
 		if err != nil {
 			return nil, errors.New("invalid result metadata")
 		}
@@ -238,7 +236,7 @@ func (s *Store) DeleteOld(ctx context.Context, documentID, version string) (err 
 	defer cancel()
 	// Only generated hashes enter the filter, never filenames or document text.
 	expression := fmt.Sprintf(`metadata["document_id"] == "%s" and metadata["version"] != "%s"`, documentID, version)
-	if err := s.db.Delete(ctx, s.cfg.Collection, "", expression); err != nil {
+	if err := s.db.Delete(ctx, s.cfg.Collection, expression); err != nil {
 		return operationError(ctx, "delete old document chunks", err)
 	}
 	return nil

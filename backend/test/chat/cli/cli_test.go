@@ -24,7 +24,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/column"
 	"google.golang.org/grpc"
 )
 
@@ -66,7 +66,7 @@ func (*milvusFixture) DescribeIndex(context.Context, *milvuspb.DescribeIndexRequ
 	return &milvuspb.DescribeIndexResponse{Status: &commonpb.Status{}, IndexDescriptions: []*milvuspb.IndexDescription{{FieldName: "vector", IndexName: "vector_idx", Params: []*commonpb.KeyValuePair{{Key: "index_type", Value: "HNSW"}, {Key: "metric_type", Value: "COSINE"}}}}}, nil
 }
 func (*milvusFixture) Search(context.Context, *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
-	return &milvuspb.SearchResults{Status: &commonpb.Status{}, Results: &schemapb.SearchResultData{NumQueries: 1, TopK: 1, Topks: []int64{1}, Scores: []float32{0.9}, Ids: &schemapb.IDs{IdField: &schemapb.IDs_StrId{StrId: &schemapb.StringArray{Data: []string{"chunk-1"}}}}, FieldsData: []*schemapb.FieldData{entity.NewColumnVarChar("content", []string{"Refresh signing keys."}).FieldData(), entity.NewColumnJSONBytes("metadata", [][]byte{[]byte(`{"source":"auth.md","title":"Recovery"}`)}).FieldData()}}}, nil
+	return &milvuspb.SearchResults{Status: &commonpb.Status{}, Results: &schemapb.SearchResultData{NumQueries: 1, TopK: 1, Topks: []int64{1}, Scores: []float32{0.9}, Ids: &schemapb.IDs{IdField: &schemapb.IDs_StrId{StrId: &schemapb.StringArray{Data: []string{"chunk-1"}}}}, FieldsData: []*schemapb.FieldData{column.NewColumnVarChar("content", []string{"Refresh signing keys."}).FieldData(), column.NewColumnJSONBytes("metadata", [][]byte{[]byte(`{"source":"auth.md","title":"Recovery"}`)}).FieldData()}}}, nil
 }
 
 func fixtures(t *testing.T) []string {

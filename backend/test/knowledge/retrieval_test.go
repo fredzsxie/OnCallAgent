@@ -11,7 +11,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/entity"
 )
 
 func TestQueryUsesIndexingVectorSpaceAndDefaultTopK(t *testing.T) {
