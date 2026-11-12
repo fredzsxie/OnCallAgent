@@ -55,13 +55,14 @@ ONCALL_SERVER_PORT=6873 GOTOOLCHAIN=local go run .
 
 环境变量优先级按同名变量计算；`ONCALL_EMBEDDING_API_KEY` 与 `ARK_API_KEY` 是两个不同名称，前者只要存在就被选择。若希望使用进程中的 `ARK_API_KEY`，应移除 `.env` 中显式配置的 `ONCALL_EMBEDDING_API_KEY`，而不是把它留空。
 
-维度从实际向量输出确定，不配置预期维度。已有集合必须与实际模型输出、FLOAT_VECTOR、HNSW/COSINE 匹配；更换 Embedding 模型时，即使维度相同也不能混用不同向量空间。请使用独立集合重新入库，项目不会自动迁移已有向量。
+维度从实际向量输出确定，不配置预期维度。已有集合必须与实际模型输出、FLOAT_VECTOR、HNSW/COSINE 及 v2 BM25 Schema 匹配；更换 Embedding 模型时，即使维度相同也不能混用不同向量空间。请使用独立集合重新入库，通过知识迁移命令显式重新索引。
 
 ## 文件与检索
 
 | 环境变量 | 默认值 | 校验 / 行为 |
 | --- | --- | --- |
 | `ONCALL_FILE_DIR` | `./data/knowledge` | 保存上传的版本文件；内部规范化为绝对路径 |
+| `ONCALL_KNOWLEDGE_CATALOG_PATH` | `<ONCALL_FILE_DIR>/catalog.sqlite` | SQLite 文档目录，绑定集合与 Embedding 配置 |
 | `ONCALL_UPLOAD_MAX_BYTES` | `10485760` | 正整数，默认 10 MiB；服务端做最终校验 |
 | `ONCALL_KNOWLEDGE_CHUNK_SIZE` | `2000` | 4–65535，UTF-8 字节数 |
 | `ONCALL_KNOWLEDGE_CHUNK_OVERLAP` | `200` | 非负，且小于 chunk size |
@@ -70,7 +71,7 @@ ONCALL_SERVER_PORT=6873 GOTOOLCHAIN=local go run .
 | `ONCALL_RETRIEVAL_TOP_K` | `3` | 1–16384 |
 | `ONCALL_RETRIEVAL_SCORE_THRESHOLD` | `0.5` | 有限数，范围 [-1,1] |
 
-切分大小按字节计算，不是字符数或 token 数。Markdown 标题作为片段标题；来源与版本用于稳定 ID 和旧版本清理。阈值 `-1` 可用于观察未按分数过滤的邻近结果，不代表所有结果都相关。
+切分大小按字节计算，不是字符数或 token 数。Markdown 标题形成章节路径，知识元数据提供文档标题；来源与版本用于稳定 ID 和发布。dense 阈值 `-1` 可用于观察邻近结果，不代表所有结果都相关。
 
 ## 对话与会话记忆
 

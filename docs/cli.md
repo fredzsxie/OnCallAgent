@@ -10,13 +10,14 @@
 | --- | --- | --- |
 | `modelcheck` | 验证模型 ID、目录和一次聊天 | 聊天模型 |
 | `init_knowledge` | 探测维度，检查/创建集合和索引并加载 | Embedding、Milvus |
-| `knowledge_cmd` | 文件经 KnowledgeIndexing 图入库 | Embedding、已初始化的 Milvus 集合 |
+| `knowledge_cmd` | v2 文档解析、索引验证与目录发布；兼容图调试 | Embedding、已初始化的 Milvus 集合 |
+| `knowledge_migrate` | 预检查、旧集合重新索引和可重复迁移 | Milvus；应用迁移时需要 Embedding 与目标目录 |
 | `recall_cmd` | 普通检索，或列出/调用工具 | 根据模式按需初始化 |
 | `chat_cmd` | Invoke/Stream，显式 History，Eino Dev | 聊天模型、Embedding、Milvus、启用的工具 |
 | `tools_cmd` | 列工具定义或调用单个工具 | 只支持本次工具需要的依赖 |
 | `ai_ops_cmd` | 自定义任务的运维分析 | 规划/执行模型、启用的工具；文档工具启用时需向量依赖 |
 
-Web 与知识相关 CLI 不隐式初始化集合。除显式 `init_knowledge` 外，应先确认集合已存在、结构正确且已加载。
+Web 与知识相关 CLI 不隐式初始化集合。除显式 `init_knowledge` 和 `knowledge_migrate --apply` 外，应先确认集合已存在、结构正确且已加载。
 
 ## 模型检查
 

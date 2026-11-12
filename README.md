@@ -10,12 +10,12 @@ OnCallAgent 提供带来源的知识问答、普通与流式对话，以及基�
 
 | 能力 | 说明 |
 | --- | --- |
-| 知识库 | 上传 UTF-8 文本或 Markdown，切分、生成向量并写入 Milvus；稳定片段 ID 支持重复入库与版本更新 |
-| 知识问答 | RAG 首轮检索与 ReAct 工具调用结合，回答可引用文档来源 |
+| 知识库 | 术语、SOP、参考资料；SQLite 文档目录、版本化原文和 Milvus 双向量索引，支持失败重试与更新 |
+| 知识问答 | 向量、BM25 和 RRF 混合检索；RAG 与文档工具共享服务，保留来源和章节 |
 | 多轮对话 | 普通聊天与 SSE 共享会话，默认保留最近 3 轮完整对话、30 分钟过期 |
 | 运维分析 | ADK Plan/Execute/Replan 编排，规划与执行模型可独立配置，输出五部分报告及步骤概要 |
 | 工具扩展 | 按配置注册时间、内部文档检索和 Prometheus 告警工具，复用客户端 |
-| Web 工作台 | 普通/流式聊天、停止生成、上传、新建会话、浏览器历史及独立 AI Ops 面板 |
+| Web 工作台 | 普通/流式聊天、停止生成、上传、新建会话、浏览器历史及独立 AI Ops 和知识库 Tab |
 | 可观测性 | 易读文本日志、请求关联 ID、代码位置、上游 HTTP 状态及安全错误类别 |
 
 ## 架构概览
@@ -27,7 +27,8 @@ flowchart TB
     HTTP --> Knowledge[KnowledgeService]
     HTTP --> Ops[AIOpsService]
     Chat --> ChatAgent[RAG + ReAct ChatAgent]
-    Knowledge --> Index[KnowledgeIndexing Graph]
+    Knowledge --> Index[文档发布管线]
+    Knowledge --> Catalog[SQLite 文档目录与原文]
     Ops --> OpsAgent[Plan / Execute / Replan]
     ChatAgent --> Retriever[Retriever]
     ChatAgent --> Tools[工具注册表]
@@ -52,7 +53,7 @@ flowchart TB
 | Eino / DevOps | v0.6.0 / v0.1.7 |
 | ChatModel | Eino OpenAI 扩展 v0.1.1，模型须支持工具调用 |
 | Embedding | Eino Ark 扩展 v0.1.2；豆包多模态接口处理文本 |
-| Milvus | Go SDK client/v2 v2.5.2；目标环境需独立验证 |
+| Milvus | Milvus 2.5+ BM25；Go SDK client/v2 v2.5.2；已验收服务 2.5.27 |
 | 前端 | 原生 HTML/CSS/JavaScript；开发服务器使用 Node.js 20+ |
 
 完整 Go 依赖锁定于 [go.mod](backend/go.mod) 和 [go.sum](backend/go.sum)。浏览器 Markdown 依赖随仓库提供，版本与许可证见[第三方依赖说明](frontend/vendor/README.md)。
@@ -97,9 +98,11 @@ GOTOOLCHAIN=local go run ./cmd/init_knowledge
 GOTOOLCHAIN=local go run .
 ```
 
-初始化会调用真实 Embedding 探测维度，创建缺失集合和 HNSW/COSINE 索引并加载。已有结构不匹配时报告差异，保留数据，不自动删除或重建。
+初始化会调用真实 Embedding 探测维度，创建缺失 v2 集合、HNSW/COSINE 与 BM25 稀疏索引并加载。已有结构不匹配时报告差异，保留数据，不自动删除或重建。
 
 Web 默认监听 `6872`。服务启动依赖模型配置和可用的知识集合；`/api/health` 是服务存活检查，不代表所有外部依赖实时就绪。
+
+已有旧集合时，先阅读[知识库迁移指南](docs/knowledge.md#从旧集合迁移)，为新集合配置独立 SQLite 目录，再切换服务。
 
 ### 3. 启动前端
 
@@ -167,9 +170,11 @@ HTTP 执行固定排查任务，返回 `data.result` 报告和 `data.detail` 步
 | 指南 | 内容 |
 | --- | --- |
 | [文档索引](docs/README.md) | 按使用、集成和开发需求选择阅读路径 |
+| [知识库](docs/knowledge.md) | 知识编写模板、三种检索模式、文档管理与迁移回滚 |
+| [知识库验收](docs/knowledge-acceptance.md) | 真实 Milvus、标注查询指标与浏览器验证边界 |
 | [架构](docs/architecture.md) | 三条编排、模块职责、向量存储、生命周期及一致性边界 |
 | [配置](docs/configuration.md) | 环境变量、默认值、校验、模型和工具配置 |
-| [HTTP API](docs/api.md) | 五个接口、SSE 协议、响应示例和错误处理 |
+| [HTTP API](docs/api.md) | 聊天、运维与知识库接口、SSE 协议及错误处理 |
 | [CLI](docs/cli.md) | 模型检查、集合初始化、入库、检索、工具及 Agent 调试 |
 | [部署](docs/deployment.md) | 前后端启动、同源代理、超时、持久化与访问控制 |
 | [开发与测试](docs/development.md) | 本地测试、Postman 模拟、显式集成及贡献约定 |

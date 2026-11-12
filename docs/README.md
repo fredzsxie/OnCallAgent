@@ -16,10 +16,13 @@
 
 ## 主题指南
 
+- [知识库](knowledge.md)：术语与 SOP 模板、浏览与三种检索、版本恢复、迁移与回滚。
+- [知识库验收](knowledge-acceptance.md)：真实 Milvus 指标、本地与浏览器验证结果及边界。
+
 - [架构](architecture.md)：模块分层、KnowledgeIndexing、ChatAgent、运维 Agent，以及数据与并发边界。
 - [配置](configuration.md)：后端环境变量、默认值、校验、模型继承、工具开关和前端公开配置。
 - [HTTP API](api.md)：存活检查、聊天、SSE、上传和运维分析的现有契约。
-- [CLI](cli.md)：七个独立入口、输入输出、依赖要求与 Eino Dev 调试。
+- [CLI](cli.md)：八个独立入口、输入输出、依赖要求与 Eino Dev 调试。
 - [部署](deployment.md)：二进制运行、静态前端、同源代理、超时和访问控制。
 - [开发与测试](development.md)：默认测试、本地模拟、显式真实集成、验证范围和贡献流程。
 - [日志与排障](observability.md)：日志格式、请求关联、文件留存与常见问题。

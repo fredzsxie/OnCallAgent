@@ -129,3 +129,10 @@ GOTOOLCHAIN=local go -C backend test ./test/ops \
 5. 提交 Pull Request，说明问题、最终行为、验证结果和限制；不要求为简单文档修改重复执行云端验收。
 
 不提交密钥、日志、上传数据、构建产物或个人环境路径。项目当前尚未指定许可证；不要在贡献说明或文档中擅自声明项目授权，第三方依赖许可证保持原样。
+
+
+## 知识库验收
+
+知识库版本、三种检索与目录测试位于 test/knowledge；页面请求与取消测试位于 test/frontend/knowledge.test.mjs。至少 30 条标注查询及示例文档保存在 test/knowledge/testdata/retrieval-corpus.json。显式 TestHybridRetrievalIntegration 会创建随机命名的 v2 和旧结构验收集合，记录 Recall@5、MRR、P95，并验证更新与迁移；不要全局开启所有真实集成测试。
+
+浏览器 helper 现在使用真实 SQLite、文档发布服务与共享 SearchService；PublicationMemory 仅用于流程验证。可设置 ONCALL_KNOWLEDGE_HELPER_SEED=1 注入示例术语。模拟环境的调用证据与限制保存在 test/frontend/stage11.context.yaml；已执行结果见[知识库验收记录](knowledge-acceptance.md)。

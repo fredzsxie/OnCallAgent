@@ -28,48 +28,46 @@ backend/
 frontend/                    # 原生页面、开发代理与随附浏览器依赖
 ```
 
-Web 启动顺序为配置加载 → 创建共享客户端与 Store → 注册工具 → 构造运维 Agent → 编译聊天图与入库图 → 构造服务 → 注册路由并监听。初始化错误会阻止启动；请求中不创建客户端或重新编译图。各 CLI 根据实际操作选择所需依赖。
+Web 启动时创建共享客户端、Store、SQLite 目录和检索服务，再注册工具并编译聊天与运维图。所有正常知识写入通过文档管理服务，初始化错误阻止启动。各 CLI 按操作选择依赖。
 
-## 知识入库：KnowledgeIndexing
+## 知识入库与版本发布
 
 ```mermaid
 flowchart LR
-    S([START]) --> L[FileLoader]
-    L --> T[MarkdownSplitter]
-    T --> I[MilvusIndexer]
-    I --> E([END])
-    I -. Store 内调用 .-> Emb[Ark Embedding]
-    I --> DB[(Milvus)]
+    Upload[Web / CLI] --> Manager[文档管理服务]
+    Manager --> Files[版本化原文]
+    Manager --> Parse[元数据解析与章节切分]
+    Parse --> Store[分批写入双向量切片]
+    Store --> Verify[Strong 查询确认全部可见]
+    Verify --> Publish[SQLite 发布 active_version]
+    Publish --> Cleanup[清理旧片段]
 ```
 
-图契约为 `document.Source → []string`，返回写入片段的 ID。Embedding 属于 Indexer/Store 内部能力，不是独立图节点。
+目录管理文档身份、元数据、active_version、latest_version 和入库状态；Milvus 是检索索引。Markdown front matter 与显式表单字段合并，术语尽量完整保留，SOP 按章节切分，超长块使用 UTF-8 安全窗口。标题、别名、告警名、章节和正文组成 search_text，供稠密向量与 BM25 共用。
 
-| 节点 | 行为 |
-| --- | --- |
-| FileLoader | 从来源根目录读取常规 UTF-8 txt/md/markdown 文件，校验路径、格式、大小和内容 |
-| MarkdownSplitter | 按配置的字节大小与重叠切分，识别 Markdown 标题，生成稳定 ID 和元数据 |
-| MilvusIndexer | 分批 Upsert、检查返回 ID，全部批次确认后清理同文档旧版本 |
+版本指纹包含正文、规范化元数据、索引配置和切分参数。片段 ID 根据文档、版本和序号生成。分批写入不构成数据库间事务；SQLite 发布是可见性边界，检索会排除未发布和旧版本。旧片段清理失败记录 cleanup_pending，成功发布保持有效。
 
-HTTP 上传先由 KnowledgeService 校验文本并原子保存 hash 命名的版本文件，再以真实路径构造 `document.Source` 调用图。逻辑来源采用原始规范化文件名，通过定向 LoaderOption 传给 FileLoader；它不改变物理路径和根目录检查。CLI 默认以相对 `--root` 的规范化路径作为来源。
+同进程同来源写入串行。Web 启动恢复中断尝试并重试清理；当前仅支持单写入者，不提供多进程锁。目录、原文及集合需要成对持久化和切换。
 
-片段保留 `source`、`title`、`chunk_index`、`content_hash`、`document_id`、`version` 等元数据。相同来源、内容及切分配置生成相同片段 ID；幂等性以可见主键集合判断，不依赖数据库物理行数。
+保留的 Eino KnowledgeIndexing 图契约为 document.Source → []string，用于旧结构兼容及 Dev 调试。v2 图直接执行只暂存片段；正常 Web 与 CLI 入库由 Manager 完成验证和发布，原图不能替代目录事务。CLI 复用 Loader 的根目录和符号链接检查。
 
-同一进程内同来源写入串行；上传锁覆盖保存与图调用，Indexer 使用独立写入锁。写入失败会保留版本文件和旧向量；重试可用相同 ID 收敛。分批写入不是跨批事务，失败时可能已存在部分新版本片段；只保证全部新片段确认后才清理旧版本。锁不提供跨进程协调。
-
-## 向量存储与检索
+## 存储与统一检索
 
 | 字段 | 类型 | 用途 |
 | --- | --- | --- |
-| `id` | VARCHAR(256)，非自动主键 | 稳定片段 ID |
-| `content` | VARCHAR(65535) | 文档正文 |
-| `metadata` | JSON | 来源、标题、序号、版本等 |
-| `vector` | FLOAT_VECTOR | 与实际 Embedding 输出相同维度 |
+| id | VARCHAR，非自动主键 | 稳定切片 ID |
+| content / metadata | VARCHAR / JSON | 正文、来源、章节及版本信息 |
+| document_id / version / chunk_index | VARCHAR / VARCHAR / INT64 | 文档关联及排序 |
+| doc_type / domain / service | VARCHAR | 常用分类过滤 |
+| search_text | VARCHAR，启用 jieba + lowercase | 带上下文的检索文本 |
+| vector | FLOAT_VECTOR | HNSW/COSINE，M=16、efConstruction=128 |
+| sparse_vector | SPARSE_FLOAT_VECTOR | Milvus BM25 Function 输出与稀疏倒排索引 |
 
-初始化使用 HNSW/COSINE（M=16、efConstruction=128）；存取复用同一 Embedding 模型、数值向量转换和 COSINE 度量，检索采用 Strong 一致性。向量必须维度一致、可转换为有限 float32 且非零。
+SearchService 提供 dense、bm25 和 hybrid，通过 Eino Retriever 适配器服务聊天和内部文档工具，同时提供 HTTP 检索。hybrid 使用 Milvus 原生 RRF(k=60)。过滤作用于两路召回；返回前核对目录当前版本，候选不足时扩大召回。
 
-Retriever 默认 TopK=3、阈值 0.5，按分数降序返回正文、来源、标题、ID 和 score；无命中返回空数组，查询失败返回错误。阈值需结合自己的模型和语料调整，不能视为通用置信度。
+Agent 默认 hybrid、TopK=3，页面默认 hybrid、TopK=10。COSINE 的 0.5 阈值仅适用于 dense；返回值标记 cosine、bm25 或 rrf，均不作为通用置信度。无命中返回空数组，依赖失败保留错误和取消语义。
 
-`init_knowledge` 显式探测维度、检查或创建集合与索引并加载。Web、检索与 Agent CLI 只使用已有集合，不隐式初始化或加载。已有结构不匹配时报告差异，保留数据。
+init_knowledge 显式探测维度、检查或创建 v2 集合和双索引并加载。服务启动只校验，不自动重建。旧结构通过独立迁移命令写入目标集合，原文缺失时保留索引片段。详细约定见[知识库指南](knowledge.md)。
 
 ## 对话：RAG + ReAct ChatAgent
 

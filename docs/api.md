@@ -17,6 +17,12 @@
 | POST | `/api/chat_stream` | SSE 对话 |
 | POST | `/api/upload` | 文件保存并入库 |
 | POST | `/api/ai_ops` | 固定任务运维分析 |
+| GET | `/api/knowledge/documents` | 分页文档目录 |
+| GET | `/api/knowledge/documents/{id}` | 文档正文与元数据 |
+| GET | `/api/knowledge/documents/{id}/chunks` | 当前版本切片 |
+| POST | `/api/knowledge/documents` | 上传新文档及元数据 |
+| PUT | `/api/knowledge/documents/{id}` | 指定预期版本更新文件 |
+| POST | `/api/knowledge/search` | 向量、BM25 或混合检索 |
 
 当前没有 `/api/ready`、会话删除接口或知识文件下载接口。
 
@@ -206,3 +212,8 @@ curl -i --max-time 210 http://127.0.0.1:6872/api/ai_ops \
 `POST /api/knowledge/search` 接收 `query`、`mode`（dense/bm25/hybrid）、`topK`（1–100，默认 10）和 `filters`，返回命中片段、来源、文档版本及 `scoreType`（cosine/bm25/rrf）。`denseMinScore` 仅允许用于 dense。
 
 `POST /api/knowledge/documents` 与 `PUT /api/knowledge/documents/{id}` 接收 multipart `file` 和可选 JSON 字符串 `metadata`。新建可传逻辑 `source`；更新必须传 `expectedVersion`，来源保持原值。来源或版本冲突返回 409，文档不存在返回 404。显式 metadata 字段覆盖 Markdown front matter；省略字段使用文件值或默认值。
+
+
+知识检索成功响应中的 documents 包含 id、documentId、version、chunkIndex、title、source、docType、sectionPath、content、score、scoreType，顶层另有 query、mode、scoreType、durationMs。目录及切片分页返回 items、total、page、pageSize。文档详情包含 activeVersion、latestVersion、updatedAt、chunkCount、indexOnly、status 和可用的 content；新接口不返回服务端原文路径。
+
+知识参数错误返回 400，格式错误 415，超限 413，目录不存在 404，来源或版本冲突 409，检索依赖失败 502，入库失败 503。首次失败文档可用相同内容和元数据重试新建；更新未发布文档时仍必须显式提交 expectedVersion 字段，其值可以为空字符串。

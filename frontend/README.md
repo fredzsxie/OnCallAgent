@@ -2,7 +2,7 @@
 
 [项目首页](../README.md) · [配置](../docs/configuration.md) · [API](../docs/api.md) · [部署](../docs/deployment.md)
 
-原生 HTML、CSS、JavaScript 页面，提供聊天、知识文件上传和独立 AI Ops 报告面板。无需 npm 安装或构建；Markdown 依赖随仓库提供，不依赖运行时 CDN。
+原生 HTML、CSS、JavaScript 页面，提供聊天、AI Ops 和知识库三个工作区。无需 npm 安装或构建；Markdown 依赖随仓库提供，不依赖运行时 CDN。
 
 ## 启动
 
@@ -34,6 +34,12 @@ ONCALL_API_PROXY_TIMEOUT_MS=210000 ./frontend/start.sh
 助手与运维报告先经 Marked 解析，再经 DOMPurify 白名单过滤；用户输入、错误和详情均为纯文本。默认不加载消息图片，过滤脚本、事件属性、SVG、iframe、表单和不安全链接；库失效时降级为纯文本。第三方版本与许可证见 [vendor/README.md](vendor/README.md)。
 
 公开的 `config.js` 只配置浏览器行为，例如上传大小预校验；不能放密钥。前端不提供身份认证，访问控制需由部署环境提供。
+
+## 知识库
+
+知识库 Tab 支持分类筛选与分页、完整正文和切片查看、向量/BM25/混合检索，以及带元数据的文件上传与版本更新。默认混合检索、TopK=10；结果标明实际得分类型。点击命中标题可定位到切片，文档已更新时展示当前版本。
+
+更新表单预填当前元数据，通过 expectedVersion 防止覆盖并发更新；冲突后重新加载核对。取消或网络中断时刷新目录确认服务端状态，再决定重试。历史原文缺失时展示索引片段说明。新页面复用原有 Markdown 安全渲染、取消控制和同源代理。
 
 ## 验证
 

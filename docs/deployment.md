@@ -43,7 +43,7 @@ GOTOOLCHAIN=local go build -o bin/init_knowledge ./cmd/init_knowledge
 
 初始化命令可能创建集合、索引并加载，且会调用真实 Embedding；已有结构不匹配时保留数据。Web 不会替代这一步。默认后端端口为 6872；监听端口可配置，但当前没有独立的监听地址配置，请通过网络规则限制后端入口。
 
-SIGINT/SIGTERM 触发服务退出并关闭客户端。应用日志默认在当前工作目录的 `log/`，上传文件默认在 `data/knowledge/`。关闭前端标签页或代理连接不等于服务停止。
+SIGINT/SIGTERM 触发服务退出并关闭客户端。应用日志默认在当前工作目录的 `log/`，上传文件默认在 `data/knowledge/`，SQLite 文档目录默认在同一目录的 `catalog.sqlite`。关闭前端标签页或代理连接不等于服务停止。
 
 ## 静态前端与同源反向代理
 
@@ -116,3 +116,12 @@ curl -i http://oncall.example.com/api/health
 ```
 
 再按 [API 指南](api.md)验证普通聊天、SSE、上传后提问和运维分析。检查页面请求是否始终为同源 `/api`，SSE 是否收到 done，超时是否能展示安全错误，以及响应 `X-Request-ID` 是否能关联到日志。真实依赖的成功情况需在目标环境记录，不以本地模拟结果替代。
+
+
+## 知识库 v2 持久化和切换
+
+原文目录和 SQLite 文档目录需要持久化。SQLite 使用 WAL，备份时停止写入并关闭进程，或使用 SQLite 一致性备份机制。当前按单进程、单写入者部署；不要同时运行多个 Web/知识 CLI 写同一目录。
+
+已有旧集合先按[迁移指南](knowledge.md#从旧集合迁移)预检查，再在禁写窗口创建目标集合并重新索引。迁移及验证期间停止旧 Web 和 CLI 写入，通过网络规则或暂不切换公共代理限制新服务入口。核对目录、正文、关键查询及更新后，成对切换集合与目录配置并恢复写入。验证窗口保留旧应用和旧集合；恢复写入后的回滚还需要保存并补录新内容。
+
+静态部署包含新增的 knowledge.mjs 和 knowledge-view.mjs；代理需要转发知识接口的 GET、POST、PUT 以及 multipart 请求。实际验收结果见[知识库验收记录](knowledge-acceptance.md)。
