@@ -36,6 +36,7 @@ type SearchRequest struct {
 }
 type SearchHit struct {
 	ID          string  `json:"id"`
+	ChunkIndex  int     `json:"chunkIndex"`
 	DocumentID  string  `json:"documentId"`
 	Version     string  `json:"version"`
 	Title       string  `json:"title"`
@@ -136,7 +137,7 @@ func (s *SearchService) Search(ctx context.Context, r SearchRequest) (result Sea
 				continue
 			}
 			seen[d.ID] = true
-			hits = append(hits, SearchHit{ID: d.ID, DocumentID: id, Version: version, Title: str("title"), Source: str("source"), DocType: str("docType"), SectionPath: str("section_path"), Content: d.Content, Score: d.Score(), ScoreType: scoreType})
+			hits = append(hits, SearchHit{ID: d.ID, ChunkIndex: chunkIndex(d), DocumentID: id, Version: version, Title: str("title"), Source: str("source"), DocType: str("docType"), SectionPath: str("section_path"), Content: d.Content, Score: d.Score(), ScoreType: scoreType})
 		}
 		sort.SliceStable(hits, func(i, j int) bool {
 			if hits[i].Score == hits[j].Score {

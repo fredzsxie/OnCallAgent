@@ -1,6 +1,7 @@
 import {chat, upload, validateFile, formatBytes} from './api.mjs';
 import {loadHistory, saveHistory, newSession, newID} from './history.mjs';
 import {OpsTask, opsOutcome} from './aiops.mjs';
+import {initKnowledgeView} from './knowledge-view.mjs';
 import {renderAnswer} from './render.mjs';
 
 const $ = id => document.getElementById(id);
@@ -15,6 +16,7 @@ let opsTimer;
 const opsTask = new OpsTask({onChange: renderOps});
 const configuredMax = window.ONCALL_CONFIG?.uploadMaxBytes;
 const uploadMax = Number.isSafeInteger(configuredMax) && configuredMax > 0 ? configuredMax : 10485760;
+const knowledgeView = initKnowledgeView();
 const nodes = new Map();
 const persist = () => saveHistory(storage, state, warn);
 const dateText = timestamp => new Date(timestamp).toLocaleString('zh-CN', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
@@ -97,7 +99,7 @@ function updateMessage(message) {
 
 function renderConversation() {
   nodes.clear(); $('messages').replaceChildren();
-  $('conversation-title').textContent = currentView === 'chat' ? active.title : '运维分析';
+  $('conversation-title').textContent = currentView === 'chat' ? active.title : currentView === 'ops' ? '运维分析' : '知识库';
   $('welcome').hidden = active.messages.length > 0;
   for (const message of active.messages) $('messages').append(messageNode(message));
   renderSessions(); scrollBottom(); setBusy();
@@ -105,7 +107,7 @@ function renderConversation() {
 
 function setBusy() {
   const busy = !!operation;
-  for (const id of ['new-chat', 'clear-history', 'send', 'upload', 'mode', 'question', 'view-chat', 'view-ops', 'ops-run']) $(id).disabled = busy;
+  for (const id of ['new-chat', 'clear-history', 'send', 'upload', 'mode', 'question', 'view-chat', 'view-ops', 'view-knowledge', 'ops-run']) $(id).disabled = busy;
   $('send').hidden = busy;
   $('stop').hidden = !busy || operation.kind !== 'chat';
   if (!busy) $('activity').textContent = '准备就绪';
@@ -223,7 +225,7 @@ $('transcript').addEventListener('click', closeMenu);
 $('transcript').addEventListener('scroll', () => { $('jump-bottom').hidden = nearBottom(); });
 $('jump-bottom').addEventListener('click', scrollBottom);
 for (const button of document.querySelectorAll('[data-question]')) button.addEventListener('click', () => { $('question').value = button.dataset.question; $('question').focus(); });
-window.addEventListener('pagehide', () => { operation?.controller?.abort(); opsTask.cancel(); persist(); });
+window.addEventListener('pagehide', () => { operation?.controller?.abort(); opsTask.cancel(); knowledgeView.leave(); persist(); });
 window.addEventListener('pageshow', event => {
   if (event.persisted && operation?.kind === 'chat') stop();
 });
@@ -233,16 +235,18 @@ else newChat();
 
 function showView(view) {
   if (operation) return;
+  if (currentView === 'knowledge' && view !== 'knowledge') knowledgeView.leave();
   currentView = view;
-  $('chat-view').hidden = view !== 'chat'; $('ops-view').hidden = view !== 'ops';
-  $('workspace-label').textContent = view === 'chat' ? 'OnCallAgent / 工作会话' : 'OnCallAgent / AI Ops';
-  $('conversation-title').textContent = view === 'chat' ? active?.title || '新会话' : '运维分析';
+  $('chat-view').hidden = view !== 'chat'; $('ops-view').hidden = view !== 'ops'; $('knowledge-view').hidden = view !== 'knowledge';
+  $('workspace-label').textContent = view === 'chat' ? 'OnCallAgent / 工作会话' : view === 'ops' ? 'OnCallAgent / AI Ops' : 'OnCallAgent / 知识库';
+  $('conversation-title').textContent = view === 'chat' ? active?.title || '新会话' : view === 'ops' ? '运维分析' : '知识库';
   $('mode-label').hidden = view !== 'chat';
-  for (const name of ['chat', 'ops']) {
+  for (const name of ['chat', 'ops', 'knowledge']) {
     $(`view-${name}`).classList.toggle('selected', view === name);
     $(`view-${name}`).setAttribute('aria-pressed', String(view === name));
   }
   closeMenu();
+ if (view === 'knowledge') knowledgeView.enter();
 }
 
 function renderOps(value) {
@@ -273,6 +277,7 @@ function renderOps(value) {
   $('ops-elapsed').hidden = value.startedAt === null;
   elapsed(); if (value.status === 'running') opsTimer = setInterval(elapsed, 1000);
 }
+$('view-knowledge').addEventListener('click', () => showView('knowledge'));
 $('view-chat').addEventListener('click', () => showView('chat'));
 $('view-ops').addEventListener('click', () => { showView('ops'); if (!operation) $('ops-run').focus(); });
 $('ops-run').addEventListener('click', () => {
