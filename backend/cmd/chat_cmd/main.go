@@ -140,10 +140,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	retriever, err := recall.NewMilvusRetriever(store, retrievalCfg)
+	retriever, closeRetrieval, err := recall.NewConfigured(ctx, store, retrievalCfg, embeddingCfg.Model)
 	if err != nil {
 		return err
 	}
+	defer closeRetrieval()
 	operations, err := client.OpenOperations(ctx, toolsCfg)
 	if err != nil {
 		return err

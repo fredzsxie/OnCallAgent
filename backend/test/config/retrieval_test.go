@@ -8,11 +8,11 @@ import (
 )
 
 func TestRetrievalAndToolsDefaults(t *testing.T) {
-	for _, name := range []string{"ONCALL_RETRIEVAL_TOP_K", "ONCALL_RETRIEVAL_SCORE_THRESHOLD", "ONCALL_TOOLS_QUERY_INTERNAL_DOCS_ENABLED", "ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED", "ONCALL_TIME_ZONE"} {
+	for _, name := range []string{"ONCALL_RETRIEVAL_MODE", "ONCALL_RETRIEVAL_TOP_K", "ONCALL_RETRIEVAL_SCORE_THRESHOLD", "ONCALL_TOOLS_QUERY_INTERNAL_DOCS_ENABLED", "ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED", "ONCALL_TIME_ZONE"} {
 		unsetEnv(t, name)
 	}
 	r, err := config.LoadRetrieval()
-	if err != nil || r.TopK != 3 || r.ScoreThreshold != 0.5 {
+	if err != nil || r.Mode != "hybrid" || r.TopK != 3 || r.ScoreThreshold != 0.5 {
 		t.Fatalf("retrieval defaults: %+v %v", r, err)
 	}
 	tools, err := config.LoadTools()
@@ -38,7 +38,7 @@ func TestInvalidRetrievalAndToolsConfig(t *testing.T) {
 		name, value string
 		tools       bool
 	}{
-		{"ONCALL_RETRIEVAL_TOP_K", "", false}, {"ONCALL_RETRIEVAL_TOP_K", "0", false}, {"ONCALL_RETRIEVAL_TOP_K", "16385", false}, {"ONCALL_RETRIEVAL_TOP_K", "x", false},
+		{"ONCALL_RETRIEVAL_MODE", "", false}, {"ONCALL_RETRIEVAL_MODE", "other", false}, {"ONCALL_RETRIEVAL_TOP_K", "", false}, {"ONCALL_RETRIEVAL_TOP_K", "0", false}, {"ONCALL_RETRIEVAL_TOP_K", "16385", false}, {"ONCALL_RETRIEVAL_TOP_K", "x", false},
 		{"ONCALL_RETRIEVAL_SCORE_THRESHOLD", "", false}, {"ONCALL_RETRIEVAL_SCORE_THRESHOLD", "x", false}, {"ONCALL_RETRIEVAL_SCORE_THRESHOLD", "NaN", false}, {"ONCALL_RETRIEVAL_SCORE_THRESHOLD", "+Inf", false}, {"ONCALL_RETRIEVAL_SCORE_THRESHOLD", "-1.01", false}, {"ONCALL_RETRIEVAL_SCORE_THRESHOLD", "1.01", false},
 		{"ONCALL_TOOLS_QUERY_INTERNAL_DOCS_ENABLED", "", true}, {"ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED", "", true}, {"ONCALL_TOOLS_GET_CURRENT_TIME_ENABLED", "yes", true}, {"ONCALL_TIME_ZONE", "", true}, {"ONCALL_TIME_ZONE", "NoSuch/Zone", true}, {"ONCALL_TIME_ZONE", "Local", true},
 	} {

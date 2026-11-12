@@ -11,12 +11,13 @@ import (
 const DefaultRetrievalTopK = 3
 
 type Retrieval struct {
+	Mode           string
 	TopK           int
 	ScoreThreshold float64
 }
 
 func LoadRetrieval() (Retrieval, error) {
-	c := Retrieval{}
+	c := Retrieval{Mode: env("ONCALL_RETRIEVAL_MODE", "hybrid")}
 	var err error
 	if c.TopK, err = strconv.Atoi(env("ONCALL_RETRIEVAL_TOP_K", "3")); err != nil {
 		return c, fmt.Errorf("ONCALL_RETRIEVAL_TOP_K must be an integer")
@@ -24,10 +25,16 @@ func LoadRetrieval() (Retrieval, error) {
 	if c.ScoreThreshold, err = strconv.ParseFloat(env("ONCALL_RETRIEVAL_SCORE_THRESHOLD", "0.5"), 64); err != nil {
 		return c, fmt.Errorf("ONCALL_RETRIEVAL_SCORE_THRESHOLD must be a number")
 	}
+	if c.Mode == "" {
+		return c, fmt.Errorf("ONCALL_RETRIEVAL_MODE must not be empty")
+	}
 	return c, c.Validate()
 }
 
 func (c Retrieval) Validate() error {
+	if c.Mode != "" && c.Mode != "dense" && c.Mode != "bm25" && c.Mode != "hybrid" {
+		return fmt.Errorf("retrieval mode must be dense, bm25 or hybrid")
+	}
 	if c.TopK < 1 || c.TopK > 16384 {
 		return fmt.Errorf("retrieval top_k must be between 1 and 16384")
 	}

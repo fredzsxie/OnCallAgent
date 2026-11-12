@@ -32,6 +32,7 @@ func main() {
 
 func run() error {
 	flags := flag.NewFlagSet("recall_cmd", flag.ContinueOnError)
+	searchMode := flags.String("mode", "", "retrieval mode: dense, bm25 or hybrid")
 	query := flags.String("query", "", "question to retrieve from the knowledge base")
 	list := flags.Bool("list-tools", false, "print enabled tool input/output schemas without connecting to dependencies")
 	name := flags.String("tool", "", "enabled tool name to invoke")
@@ -66,7 +67,7 @@ func run() error {
 		return errors.New("--input must be valid JSON")
 	}
 	needsDocs := set["query"] || *name == tools.QueryInternalDocs
-	if !needsDocs && (set["top-k"] || set["score-threshold"]) {
+	if !needsDocs && (set["top-k"] || set["score-threshold"] || set["mode"]) {
 		return errors.New("retrieval flags require a retrieval operation")
 	}
 	if err := config.LoadEnv(); err != nil {
@@ -114,6 +115,12 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		if set["mode"] {
+			cfg.Mode = *searchMode
+		}
+		if set["score-threshold"] && cfg.Mode != "dense" {
+			return errors.New("--score-threshold requires --mode dense")
+		}
 		if set["top-k"] {
 			cfg.TopK = *topK
 		}
@@ -145,10 +152,12 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		r, err = retriever.NewMilvusRetriever(store, cfg)
+		var closeRetrieval func() error
+		r, closeRetrieval, err = retriever.NewConfigured(ctx, store, cfg, embCfg.Model)
 		if err != nil {
 			return err
 		}
+		defer closeRetrieval()
 	}
 	if set["query"] {
 		result, err := r.Search(ctx, *query)

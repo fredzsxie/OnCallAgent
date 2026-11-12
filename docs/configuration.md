@@ -46,7 +46,7 @@ ONCALL_SERVER_PORT=6873 GOTOOLCHAIN=local go run .
 | `ONCALL_EMBEDDING_TIMEOUT` | `30s` | 一次 EmbedStrings 调用预算 |
 | `ONCALL_MILVUS_ADDRESS` | `localhost:19530` | `host:port`，不含 URL scheme |
 | `ONCALL_MILVUS_DATABASE` | `default` | 已存在的数据库 |
-| `ONCALL_MILVUS_COLLECTION` | `oncall_knowledge` | 知识集合 |
+| `ONCALL_MILVUS_COLLECTION` | `oncall_knowledge_v2` | v2 知识集合 |
 | `ONCALL_MILVUS_USERNAME` | 空 | 与密码同时提供或同时省略 |
 | `ONCALL_MILVUS_PASSWORD` | 空 | Milvus 密码 |
 | `ONCALL_MILVUS_TLS` | `false` | TLS 开关，使用 SDK 标准 TLS 配置 |
@@ -66,6 +66,7 @@ ONCALL_SERVER_PORT=6873 GOTOOLCHAIN=local go run .
 | `ONCALL_KNOWLEDGE_CHUNK_SIZE` | `2000` | 4–65535，UTF-8 字节数 |
 | `ONCALL_KNOWLEDGE_CHUNK_OVERLAP` | `200` | 非负，且小于 chunk size |
 | `ONCALL_KNOWLEDGE_BATCH_SIZE` | `16` | 正整数，每批写入片段数 |
+| `ONCALL_RETRIEVAL_MODE` | `hybrid` | dense、bm25、hybrid；聊天、AI Ops 和 CLI 共用 |
 | `ONCALL_RETRIEVAL_TOP_K` | `3` | 1–16384 |
 | `ONCALL_RETRIEVAL_SCORE_THRESHOLD` | `0.5` | 有限数，范围 [-1,1] |
 
@@ -138,3 +139,5 @@ Web 即使关闭内部文档工具，固定聊天拓扑仍需要首轮 Retriever
 | `ONCALL_API_PROXY_TIMEOUT_MS` | `210000` | 正整数；代理空闲超时，应大于后端任务预算 |
 
 前端启动脚本不读取后端 `.env`。页面始终请求同源 `/api`，生产部署由反向代理完成转发。[frontend/config.js](../frontend/config.js) 中的 `uploadMaxBytes` 是公开的浏览器预校验配置，应与后端大小限制协调，不能放入密钥。
+
+`ONCALL_RETRIEVAL_SCORE_THRESHOLD` 只用于 dense 模式。BM25 和 RRF 得分使用各自量纲；`recall_cmd --mode` 可以单次覆盖检索模式，显式 `--score-threshold` 必须同时使用 dense。知识目录通过 `ONCALL_KNOWLEDGE_CATALOG_PATH` 配置，默认位于知识文件目录的 `catalog.sqlite`，绑定集合与 Embedding 配置。

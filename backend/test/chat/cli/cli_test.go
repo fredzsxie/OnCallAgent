@@ -147,7 +147,7 @@ func fixtures(t *testing.T) []string {
 		json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "choices": []any{map[string]any{"index": 0, "message": answer, "finish_reason": "stop"}}})
 	}))
 	t.Cleanup(api.Close)
-	return []string{"ONCALL_CHAT_MODEL_BASE_URL=" + api.URL + "/v1", "ONCALL_CHAT_MODEL_MODEL=fixture", "ONCALL_CHAT_MODEL_API_KEY=fixture-only", "ONCALL_CHAT_MODEL_TIMEOUT=2s", "ONCALL_EMBEDDING_BASE_URL=" + api.URL + "/api/v3", "ONCALL_EMBEDDING_MODEL=doubao-embedding-vision-251215", "ONCALL_EMBEDDING_API_KEY=fixture-only", "ONCALL_MILVUS_ADDRESS=" + listener.Addr().String(), "ONCALL_MILVUS_COLLECTION=fixture", "ONCALL_TIME_ZONE=Asia/Shanghai"}
+	return []string{"ONCALL_CHAT_MODEL_BASE_URL=" + api.URL + "/v1", "ONCALL_CHAT_MODEL_MODEL=fixture", "ONCALL_CHAT_MODEL_API_KEY=fixture-only", "ONCALL_CHAT_MODEL_TIMEOUT=2s", "ONCALL_EMBEDDING_BASE_URL=" + api.URL + "/api/v3", "ONCALL_EMBEDDING_MODEL=doubao-embedding-vision-251215", "ONCALL_EMBEDDING_API_KEY=fixture-only", "ONCALL_RETRIEVAL_MODE=dense", "ONCALL_MILVUS_ADDRESS=" + listener.Addr().String(), "ONCALL_MILVUS_COLLECTION=fixture", "ONCALL_TIME_ZONE=Asia/Shanghai"}
 }
 func intPointer(v int) *int { return &v }
 

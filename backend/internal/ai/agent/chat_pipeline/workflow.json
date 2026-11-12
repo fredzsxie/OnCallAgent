@@ -190,7 +190,7 @@
           "title": "[]*schema.Document"
         },
         "config": {
-          "description": "Reuse the injected stage05 Retriever with configured TopK/COSINE threshold. Format content, source, title and stable ID; map output to documents.",
+          "description": "Reuse the injected knowledge SearchService through the Eino Retriever adapter. Apply the configured dense, BM25 or hybrid mode and format cited evidence.",
           "schema": {
             "type": "object",
             "properties": {}

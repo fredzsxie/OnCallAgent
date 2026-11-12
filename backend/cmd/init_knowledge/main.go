@@ -50,7 +50,7 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	dimension, err := knowledge.Init(ctx, db, emb, milvusCfg)
+	dimension, err := knowledge.InitV2(ctx, db, emb, milvusCfg)
 	if err != nil {
 		return err
 	}

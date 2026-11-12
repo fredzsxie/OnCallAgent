@@ -11,7 +11,7 @@ import (
 func TestKnowledgeDefaultsAndEnvironment(t *testing.T) {
 	setEnvironment(t)
 	c, err := config.LoadMilvus()
-	if err != nil || c.Address != "localhost:19530" || c.Database != "default" || c.Collection != "oncall_knowledge" || c.TLS || c.ConnectTimeout != 5*time.Second {
+	if err != nil || c.Address != "localhost:19530" || c.Database != "default" || c.Collection != "oncall_knowledge_v2" || c.TLS || c.ConnectTimeout != 5*time.Second {
 		t.Fatalf("unexpected defaults: %v", err)
 	}
 	t.Setenv("ONCALL_MILVUS_ADDRESS", "127.0.0.1:19531")

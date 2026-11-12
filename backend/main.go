@@ -115,7 +115,26 @@ func run() (err error) {
 	if err != nil {
 		return err
 	}
-	recall, err := retriever.NewMilvusRetriever(store, retrievalCfg)
+	if !store.HybridEnabled() {
+		return fmt.Errorf("knowledge API requires a v2 collection; run knowledge_migrate first")
+	}
+	catalog, err := knowledge.OpenCatalog(knowledgeCfg.CatalogPath)
+	if err != nil {
+		return err
+	}
+	defer catalog.Close()
+	manager, err := knowledge.NewManager(ctx, knowledgeCfg, catalog, store, store.Profile(embeddingCfg.Model))
+	if err != nil {
+		return err
+	}
+	if err = manager.Recover(ctx); err != nil {
+		return err
+	}
+	search, err := knowledge.NewSearchService(catalog, store, knowledge.SearchConfig{Mode: retrievalCfg.Mode, TopK: retrievalCfg.TopK, DenseMinScore: retrievalCfg.ScoreThreshold, Timeout: milvusCfg.Timeout})
+	if err != nil {
+		return err
+	}
+	recall, err := retriever.NewMilvusRetriever(search, retrievalCfg)
 	if err != nil {
 		return err
 	}
@@ -174,25 +193,6 @@ func run() (err error) {
 		return err
 	}
 
-	if !store.HybridEnabled() {
-		return fmt.Errorf("knowledge API requires a v2 collection; run knowledge_migrate first")
-	}
-	catalog, err := knowledge.OpenCatalog(knowledgeCfg.CatalogPath)
-	if err != nil {
-		return err
-	}
-	defer catalog.Close()
-	manager, err := knowledge.NewManager(ctx, knowledgeCfg, catalog, store, store.Profile(embeddingCfg.Model))
-	if err != nil {
-		return err
-	}
-	if err = manager.Recover(ctx); err != nil {
-		return err
-	}
-	search, err := knowledge.NewSearchService(catalog, store, knowledge.SearchConfig{Mode: knowledge.Hybrid, TopK: retrievalCfg.TopK, DenseMinScore: retrievalCfg.ScoreThreshold, Timeout: milvusCfg.Timeout})
-	if err != nil {
-		return err
-	}
 	knowledgeService, err := knowledge.NewManagedKnowledgeService(knowledgeCfg, manager)
 	if err != nil {
 		return err

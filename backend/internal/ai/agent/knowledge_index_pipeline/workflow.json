@@ -84,7 +84,7 @@
           "title": "[]*schema.Document"
         },
         "config": {
-          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller. V2 writes stage chunks only; the catalog publication manager owns active versions and old-version cleanup.",
           "schema": {
             "type": "object",
             "properties": {}
@@ -119,7 +119,7 @@
           "title": "[]string"
         },
         "config": {
-          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller.",
+          "description": "Injected through knowledge_index_pipeline.Config; clients owned by the caller. V2 writes stage chunks only; the catalog publication manager owns active versions and old-version cleanup.",
           "schema": {
             "type": "object",
             "properties": {}

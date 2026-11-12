@@ -330,3 +330,5 @@ func decodeDocument(ids, contents, metas column.Column, i int) (*schema.Document
 	}
 	return &schema.Document{ID: id, Content: text, MetaData: m}, nil
 }
+
+func (s *Store) Timeout() time.Duration { return s.cfg.Timeout }

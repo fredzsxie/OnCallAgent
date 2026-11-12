@@ -53,7 +53,7 @@ func LoadMilvus() (Milvus, error) {
 	c := Milvus{
 		Address:    env("ONCALL_MILVUS_ADDRESS", "localhost:19530"),
 		Database:   env("ONCALL_MILVUS_DATABASE", "default"),
-		Collection: env("ONCALL_MILVUS_COLLECTION", "oncall_knowledge"),
+		Collection: env("ONCALL_MILVUS_COLLECTION", "oncall_knowledge_v2"),
 		Username:   env("ONCALL_MILVUS_USERNAME", ""), Password: os.Getenv("ONCALL_MILVUS_PASSWORD"),
 	}
 	var err error

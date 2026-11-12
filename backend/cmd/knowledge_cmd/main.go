@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/cloudwego/eino-ext/devops"
@@ -90,10 +91,40 @@ func run() error {
 		return err
 	}
 	if *file != "" {
-		ids, err := graph.Invoke(ctx, document.Source{URI: *file})
-		if err != nil {
-			return err
+		var ids []string
+		if store.HybridEnabled() {
+			catalog, e := knowledge.OpenCatalog(cfg.CatalogPath)
+			if e != nil {
+				return e
+			}
+			defer catalog.Close()
+			manager, e := knowledge.NewManager(ctx, cfg, catalog, store, store.Profile(embeddingCfg.Model))
+			if e != nil {
+				return e
+			}
+			doc, e := knowledgepipeline.ReadSource(ctx, knowledgepipeline.Config{Root: *root, Knowledge: cfg}, document.Source{URI: *file})
+			if e != nil {
+				return e
+			}
+			source, _ := doc.MetaData["source"].(string)
+			result, e := manager.Ingest(ctx, source, strings.NewReader(doc.Content), knowledge.MetadataPatch{}, nil, false)
+			if e != nil {
+				return e
+			}
+			chunks, e := manager.Chunks(ctx, result.ID)
+			if e != nil {
+				return e
+			}
+			for _, chunk := range chunks {
+				ids = append(ids, chunk.ID)
+			}
+		} else {
+			ids, err = graph.Invoke(ctx, document.Source{URI: *file})
+			if err != nil {
+				return err
+			}
 		}
+
 		if err := json.NewEncoder(os.Stdout).Encode(ids); err != nil {
 			return err
 		}

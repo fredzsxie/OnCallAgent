@@ -115,6 +115,10 @@ func IndexChunks(ctx context.Context, store DocumentStore, docs []*schema.Docume
 	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(ErrRetryable, err)
 	}
+	// A v2 graph only stages chunks; the publication manager owns deletion after the catalog commit.
+	if hybrid, ok := store.(interface{ HybridEnabled() bool }); ok && hybrid.HybridEnabled() {
+		return ids, nil
+	}
 	if err := store.DeleteOld(ctx, documentID, version); err != nil {
 		return nil, errors.Join(ErrRetryable, err)
 	}

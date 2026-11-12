@@ -131,3 +131,19 @@ func TestValidationStopsBackend(t *testing.T) {
 		t.Fatal("invalid config accepted")
 	}
 }
+
+func TestHybridAdapterDoesNotApplyCosineThreshold(t *testing.T) {
+	b := &backend{docs: []*schema.Document{(&schema.Document{ID: "hybrid", Content: "SOP"}).WithScore(0.01)}}
+	r, err := retriever.NewMilvusRetriever(b, config.Retrieval{Mode: "hybrid", TopK: 3, ScoreThreshold: 0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err := r.Retrieve(context.Background(), "origin")
+	if err != nil || len(docs) != 1 || b.options.ScoreThreshold != nil {
+		t.Fatalf("RRF score filtered as COSINE: %+v %v", docs, err)
+	}
+	result, err := r.Search(context.Background(), "origin")
+	if err != nil || result.Mode != "hybrid" || result.ScoreType != "rrf" {
+		t.Fatal("score type not exposed")
+	}
+}

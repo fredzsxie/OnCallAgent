@@ -91,3 +91,16 @@ func (l *fileLoader) Load(ctx context.Context, src document.Source, opts ...docu
 	}
 	return []*schema.Document{{Content: string(data), MetaData: map[string]any{"source": source}}}, nil
 }
+
+// ReadSource reuses the graph's root and symlink checks for catalog-managed CLI ingestion.
+func ReadSource(ctx context.Context, cfg Config, src document.Source) (*schema.Document, error) {
+	loader, err := newLoader(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	docs, err := loader.Load(ctx, src)
+	if err != nil {
+		return nil, err
+	}
+	return docs[0], nil
+}

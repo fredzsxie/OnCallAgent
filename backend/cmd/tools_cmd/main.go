@@ -125,10 +125,12 @@ func run() error {
 		if err != nil {
 			return operations.Failure(selected, operations.ErrConfiguration)
 		}
-		deps.Retriever, err = retriever.NewMilvusRetriever(store, retrievalCfg)
+		var closeRetrieval func() error
+		deps.Retriever, closeRetrieval, err = retriever.NewConfigured(ctx, store, retrievalCfg, embCfg.Model)
 		if err != nil {
 			return operations.Failure(selected, err)
 		}
+		defer closeRetrieval()
 	}
 	registry, err := tools.NewRegistry(cfg, deps)
 	if err != nil {

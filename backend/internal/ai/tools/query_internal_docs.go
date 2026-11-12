@@ -10,7 +10,7 @@ import (
 )
 
 const QueryInternalDocs = "query_internal_docs"
-const queryDescription = "Search internal documentation for relevant operational procedures. Results contain document content, source, title and COSINE similarity. An empty documents array means no matching evidence was found."
+const queryDescription = "Search CDN terminology, alert SOPs and reference documentation. Results contain content, source, title, section, version and mode-specific ranking scores (COSINE, BM25 or RRF). An empty documents array means no matching evidence was found."
 
 type QueryInternalDocsInput struct {
 	Query string `json:"query" jsonschema:"required,description=The question or operational procedure to search for"`

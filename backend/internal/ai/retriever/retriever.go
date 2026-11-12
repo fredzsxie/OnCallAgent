@@ -27,21 +27,31 @@ type MilvusRetriever struct {
 var _ eino.Retriever = (*MilvusRetriever)(nil)
 
 type Document struct {
-	ID      string  `json:"id"`
-	Content string  `json:"content"`
-	Source  string  `json:"source"`
-	Title   string  `json:"title"`
-	Score   float64 `json:"score"`
+	ID          string  `json:"id"`
+	Content     string  `json:"content"`
+	Source      string  `json:"source"`
+	Title       string  `json:"title"`
+	Score       float64 `json:"score"`
+	DocumentID  string  `json:"documentId,omitempty"`
+	SectionPath string  `json:"sectionPath,omitempty"`
+	DocType     string  `json:"docType,omitempty"`
+	Version     string  `json:"version,omitempty"`
+	ScoreType   string  `json:"scoreType,omitempty"`
 }
 
 type Result struct {
 	Query     string     `json:"query"`
+	Mode      string     `json:"mode"`
+	ScoreType string     `json:"scoreType"`
 	Documents []Document `json:"documents"`
 }
 
 func NewMilvusRetriever(base eino.Retriever, cfg config.Retrieval) (*MilvusRetriever, error) {
 	if base == nil {
 		return nil, errors.New("retriever backend is required")
+	}
+	if cfg.Mode == "" {
+		cfg.Mode = "dense"
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -70,6 +80,9 @@ func (r *MilvusRetriever) Retrieve(ctx context.Context, query string, opts ...ei
 	if options.TopK != nil {
 		cfg.TopK = *options.TopK
 	}
+	if options.ScoreThreshold != nil && cfg.Mode != "dense" {
+		return nil, errors.New("COSINE threshold requires dense retrieval")
+	}
 	if options.ScoreThreshold != nil {
 		cfg.ScoreThreshold = *options.ScoreThreshold
 	}
@@ -77,7 +90,11 @@ func (r *MilvusRetriever) Retrieve(ctx context.Context, query string, opts ...ei
 		return nil, err
 	}
 	effective = cfg
-	docs, err := r.base.Retrieve(ctx, query, eino.WithTopK(cfg.TopK), eino.WithScoreThreshold(cfg.ScoreThreshold))
+	backendOptions := []eino.Option{eino.WithTopK(cfg.TopK)}
+	if cfg.Mode == "dense" {
+		backendOptions = append(backendOptions, eino.WithScoreThreshold(cfg.ScoreThreshold))
+	}
+	docs, err := r.base.Retrieve(ctx, query, backendOptions...)
 	if err != nil {
 		return nil, queryError(err)
 	}
@@ -89,7 +106,7 @@ func (r *MilvusRetriever) Retrieve(ctx context.Context, query string, opts ...ei
 		if doc == nil || math.IsNaN(doc.Score()) || math.IsInf(doc.Score(), 0) {
 			return nil, ErrQueryFailed
 		}
-		if doc.Score() >= cfg.ScoreThreshold {
+		if cfg.Mode != "dense" || doc.Score() >= cfg.ScoreThreshold {
 			result = append(result, doc)
 		}
 	}
@@ -102,11 +119,12 @@ func (r *MilvusRetriever) Search(ctx context.Context, query string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{Query: strings.TrimSpace(query), Documents: make([]Document, 0, len(docs))}
+	scoreType := map[string]string{"dense": "cosine", "bm25": "bm25", "hybrid": "rrf"}[r.cfg.Mode]
+	result := Result{Query: strings.TrimSpace(query), Mode: r.cfg.Mode, ScoreType: scoreType, Documents: make([]Document, 0, len(docs))}
 	for _, doc := range docs {
 		source, _ := doc.MetaData["source"].(string)
 		title, _ := doc.MetaData["title"].(string)
-		result.Documents = append(result.Documents, Document{doc.ID, doc.Content, source, title, doc.Score()})
+		result.Documents = append(result.Documents, Document{ID: doc.ID, Content: doc.Content, Source: source, Title: title, Score: doc.Score(), DocumentID: metadataString(doc, "document_id"), SectionPath: metadataString(doc, "section_path"), DocType: metadataString(doc, "docType"), Version: metadataString(doc, "version"), ScoreType: scoreType})
 	}
 	return result, nil
 }
@@ -120,4 +138,9 @@ func queryError(err error) error {
 		return errors.Join(ErrQueryFailed, context.DeadlineExceeded)
 	}
 	return ErrQueryFailed
+}
+
+func metadataString(d *schema.Document, key string) string {
+	v, _ := d.MetaData[key].(string)
+	return v
 }
