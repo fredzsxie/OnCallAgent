@@ -159,3 +159,33 @@ func TestRetryActiveContentClearsFailedLatestAttempt(t *testing.T) {
 		t.Fatalf("active retry state incorrect: %+v %v", retried, err)
 	}
 }
+
+func TestManagedLegacyUploadReportsCanonicalSavedFile(t *testing.T) {
+	ctx := context.Background()
+	cfg := ingestionConfig(t)
+	cfg.ChunkSize = 2000
+	c, err := knowledge.OpenCatalog(filepath.Join(cfg.FileDir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	m, err := knowledge.NewManager(ctx, cfg, c, &publicationMemory{}, "test:3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := knowledge.NewManagedKnowledgeService(cfg, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := legacy.Ingest(ctx, "line-endings.md", strings.NewReader("first line\nsecond line\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := legacy.Ingest(ctx, "line-endings.md", strings.NewReader("first line\r\nsecond line\r\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("raw-file metadata changed for a canonical retry: %+v %+v", first, second)
+	}
+}

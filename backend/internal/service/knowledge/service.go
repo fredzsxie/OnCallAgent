@@ -80,7 +80,18 @@ func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.R
 		if err != nil {
 			return out, err
 		}
-		return Result{FileName: filepath.Base(d.FilePath), FilePath: d.FilePath, FileSize: int64(len(data)), Source: d.Source, ContentHash: digest(string(data)), ChunkCount: d.ChunkCount}, nil
+
+		info, err := os.Stat(d.FilePath)
+		if err != nil {
+			return out, errors.Join(ErrSave, err)
+		}
+		// Canonically equivalent uploads may reuse an older raw file; report that file's size and hash.
+		name := filepath.Base(d.FilePath)
+		hash := strings.TrimSuffix(strings.TrimPrefix(name, digest(d.Source)+"_"), strings.ToLower(filepath.Ext(d.Source)))
+		if !validHash(hash) {
+			return out, ErrInvalidDocument
+		}
+		return Result{FileName: name, FilePath: d.FilePath, FileSize: info.Size(), Source: d.Source, ContentHash: hash, ChunkCount: d.ChunkCount}, nil
 	}
 	started := time.Now()
 	stage := "validate"
