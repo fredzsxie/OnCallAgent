@@ -138,3 +138,14 @@ func JSONAt(c column.Column, i int) ([]byte, error) {
 	}
 	return raw, nil
 }
+
+// HybridMilvus is optional so dense-only test adapters remain small.
+type HybridMilvus interface {
+	HybridSearch(context.Context, string, entity.Vector, string, string, int, int) ([]milvusclient.ResultSet, error)
+}
+
+func (c *milvusDB) HybridSearch(ctx context.Context, collection string, vector entity.Vector, text, filter string, candidates, limit int) ([]milvusclient.ResultSet, error) {
+	dense := milvusclient.NewAnnRequest("vector", candidates, vector).WithFilter(filter).WithSearchParam("metric_type", "COSINE").WithAnnParam(index.NewHNSWAnnParam(max(64, candidates)))
+	sparse := milvusclient.NewAnnRequest("sparse_vector", candidates, entity.Text(text)).WithFilter(filter).WithSearchParam("metric_type", "BM25").WithAnnParam(index.NewSparseAnnParam())
+	return c.sdk.HybridSearch(ctx, milvusclient.NewHybridSearchOption(collection, limit, dense, sparse).WithOutputFields("content", "metadata").WithConsistencyLevel(entity.ClStrong).WithReranker(milvusclient.NewRRFReranker().WithK(60)))
+}
