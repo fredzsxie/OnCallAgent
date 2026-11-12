@@ -301,3 +301,19 @@ func catalogError(action string, err error) error {
 	}
 	return fmt.Errorf("knowledge catalog %s: %w", action, err)
 }
+
+func (c *Catalog) Reaffirm(ctx context.Context, id, version string) error {
+	// Retrying the already active content supersedes an earlier failed attempt without rewriting vectors.
+	result, err := c.db.ExecContext(ctx, `UPDATE documents SET latest_version=? WHERE id=? AND active_version=?`, version, id, version)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrConflict
+	}
+	return nil
+}

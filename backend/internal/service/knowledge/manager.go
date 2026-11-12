@@ -82,6 +82,9 @@ func (m *Manager) Ingest(ctx context.Context, source string, input io.Reader, pa
 		return out, ErrConflict
 	}
 	if getErr == nil && current.ActiveVersion == p.Version {
+		if err = m.catalog.Reaffirm(ctx, current.ID, p.Version); err != nil {
+			return out, err
+		}
 		m.cleanup(ctx, current.ID, p.Version)
 		return m.catalog.Get(ctx, current.ID)
 	}
@@ -216,6 +219,9 @@ func (s *Store) Chunks(ctx context.Context, id, version string) ([]*schema.Docum
 	data, err := s.db.Query(ctx, s.cfg.Collection, `metadata["document_id"] == "`+id+`" and metadata["version"] == "`+version+`"`, []string{"id", "content", "metadata"}, 16384, 0)
 	if err != nil {
 		return nil, operationError(ctx, "query chunks", err)
+	}
+	if data.Len() == 0 {
+		return []*schema.Document{}, nil
 	}
 	ids, contents, metas := client.Column(data, "id"), client.Column(data, "content"), client.Column(data, "metadata")
 	if ids == nil || contents == nil || metas == nil {

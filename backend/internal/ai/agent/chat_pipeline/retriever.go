@@ -30,8 +30,14 @@ func (r readableRetriever) Retrieve(ctx context.Context, query string, opts ...r
 		}
 		source, _ := doc.MetaData["source"].(string)
 		title, _ := doc.MetaData["title"].(string)
-		// Document.String renders Content in the prompt; include citations explicitly.
-		result = append(result, &schema.Document{ID: doc.ID, MetaData: doc.MetaData, Content: fmt.Sprintf("\n[Source: %s | Title: %s | ID: %s]\n%s\n", source, title, doc.ID, doc.Content)})
+		section, _ := doc.MetaData["section_path"].(string)
+		version, _ := doc.MetaData["version"].(string)
+		citation := fmt.Sprintf("\n[Source: %s | Title: %s | ID: %s]\n", source, title, doc.ID)
+		if section != "" || version != "" {
+			citation += fmt.Sprintf("[Section: %s | Version: %s]\n", section, version)
+		}
+		// Document.String renders Content only; put versioned section citations in the model-visible text.
+		result = append(result, &schema.Document{ID: doc.ID, MetaData: doc.MetaData, Content: citation + doc.Content + "\n"})
 	}
 	return result, nil
 }

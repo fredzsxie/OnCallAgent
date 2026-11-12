@@ -15,7 +15,7 @@ export function initKnowledgeView({uploadMaxBytes = 10485760, onBusy = () => {}}
   const list = new KnowledgeTask(renderList), detail = new KnowledgeTask(renderDetail), chunks = new KnowledgeTask(renderChunks), search = new KnowledgeTask(renderSearch), write = new KnowledgeTask(renderWrite);
   function loadList() { return list.run(signal => listDocuments({filters: filters(), q: $('kb-title-filter').value.trim(), page, signal})); }
   async function openDocument(id, hit = null) {
-    citation = hit; selected = null; chunks.reset(); $('kb-chunks-area').hidden = true;
+    citation = hit; selected = null; $('kb-document-content').hidden = true; $('kb-chunks-area').open = false; chunks.reset(); $('kb-chunks-area').hidden = true;
     const data = await detail.run(signal => getDocument(id, {signal}));
     if (!data) return;
     if (hit && data.activeVersion === hit.version) {

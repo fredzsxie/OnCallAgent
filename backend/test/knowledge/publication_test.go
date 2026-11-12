@@ -129,3 +129,33 @@ func TestFailedFirstUploadCanRetryWithoutSourceConflict(t *testing.T) {
 		t.Fatalf("retry blocked: %+v %v", d, err)
 	}
 }
+
+func TestRetryActiveContentClearsFailedLatestAttempt(t *testing.T) {
+	ctx := context.Background()
+	cfg := ingestionConfig(t)
+	cfg.ChunkSize = 2000
+	c, err := knowledge.OpenCatalog(filepath.Join(cfg.FileDir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	store := &publicationMemory{}
+	m, err := knowledge.NewManager(ctx, cfg, c, store, "test:3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := m.Ingest(ctx, "retry.md", strings.NewReader("active content"), knowledge.MetadataPatch{}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.failVerify = true
+	if _, err = m.Ingest(ctx, "retry.md", strings.NewReader("failed content"), knowledge.MetadataPatch{}, &d.ActiveVersion, false); err == nil {
+		t.Fatal("expected failed attempt")
+	}
+	store.failVerify = false
+	calls := store.Calls
+	retried, err := m.Ingest(ctx, "retry.md", strings.NewReader("active content"), knowledge.MetadataPatch{}, nil, false)
+	if err != nil || retried.Status != "ready" || retried.LatestVersion != d.ActiveVersion || store.Calls != calls {
+		t.Fatalf("active retry state incorrect: %+v %v", retried, err)
+	}
+}
