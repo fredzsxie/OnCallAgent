@@ -91,7 +91,7 @@ func (c *WriteControllerV1) ingest(ctx context.Context, id string, create bool) 
 		}
 		source = doc.Source
 		version := req.GetForm("expectedVersion").String()
-		if version == "" {
+		if _, present := req.MultipartForm.Value["expectedVersion"]; !present {
 			return nil, knowledge.ErrInvalidMetadata
 		}
 		expected = &version

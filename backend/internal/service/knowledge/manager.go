@@ -74,6 +74,10 @@ func (m *Manager) Ingest(ctx context.Context, source string, input io.Reader, pa
 	if getErr != nil && !errors.Is(getErr, ErrNotFound) {
 		return out, getErr
 	}
+	// A failed first upload reserves its source but has no published version; allow the same attempt to retry.
+	if createOnly && getErr == nil && current.ActiveVersion == "" && current.LatestVersion == p.Version && current.Status == "failed" {
+		createOnly = false
+	}
 	if (createOnly && getErr == nil) || (expected != nil && (getErr != nil || current.ActiveVersion != *expected)) {
 		return out, ErrConflict
 	}

@@ -105,3 +105,27 @@ func TestV2SchemaChecksFunctionAndAnalyzer(t *testing.T) {
 		t.Fatal("disabled analyzer accepted")
 	}
 }
+
+func TestFailedFirstUploadCanRetryWithoutSourceConflict(t *testing.T) {
+	ctx := context.Background()
+	cfg := ingestionConfig(t)
+	cfg.ChunkSize = 2000
+	c, err := knowledge.OpenCatalog(filepath.Join(cfg.FileDir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	store := &publicationMemory{failVerify: true}
+	m, err := knowledge.NewManager(ctx, cfg, c, store, "test:3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.Ingest(ctx, "first.md", strings.NewReader("first upload"), knowledge.MetadataPatch{}, nil, true); err == nil {
+		t.Fatal("expected failed upload")
+	}
+	store.failVerify = false
+	d, err := m.Ingest(ctx, "first.md", strings.NewReader("first upload"), knowledge.MetadataPatch{}, nil, true)
+	if err != nil || d.Status != "ready" {
+		t.Fatalf("retry blocked: %+v %v", d, err)
+	}
+}
