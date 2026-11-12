@@ -106,10 +106,14 @@ func InspectLegacy(ctx context.Context, db LegacyReader, collection, root string
 		if source == "" {
 			source = "legacy/" + digest(id) + ".md"
 		}
-		source, err := NormalizeSource(source)
+
+		normalized, err := NormalizeSource(source)
 		if err != nil {
-			return out, fmt.Errorf("legacy source is invalid: %w", ErrInvalidDocument)
+			// Early direct inserts used labels instead of filenames; preserve provenance without interpreting them as paths.
+			d.MetaData["legacy_source"] = source
+			normalized = "legacy/" + digest(source) + ".md"
 		}
+		source = normalized
 		version, _ := d.MetaData["version"].(string)
 		if version == "" {
 			version = digest("legacy:" + source)

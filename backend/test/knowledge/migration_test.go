@@ -112,3 +112,30 @@ func TestMigrationScansUnorderedRangesAndResumes(t *testing.T) {
 		t.Fatal("cancellation lost")
 	}
 }
+
+func TestMigrationPreservesLegacyNonFileSources(t *testing.T) {
+	ctx := context.Background()
+	cfg := ingestionConfig(t)
+	input := &legacyMemory{docs: []*schema.Document{{ID: "old-check", Content: "historical evidence", MetaData: map[string]any{"source": "knowledge_check"}}}}
+	plan, err := knowledge.InspectLegacy(ctx, input, "old", cfg.FileDir, nil)
+	if err != nil || len(plan.Documents) != 1 || !strings.HasPrefix(plan.Documents[0].Source, "legacy/") {
+		t.Fatalf("legacy label rejected: %+v %v", plan, err)
+	}
+	c, err := knowledge.OpenCatalog(filepath.Join(cfg.FileDir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	store := &publicationMemory{}
+	m, err := knowledge.NewManager(ctx, cfg, c, store, "test:3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = knowledge.ApplyMigration(ctx, m, plan); err != nil {
+		t.Fatal(err)
+	}
+	docs := store.Snapshot()
+	if len(docs) != 1 || docs[0].MetaData["legacy_source"] != "knowledge_check" {
+		t.Fatal("legacy provenance lost")
+	}
+}
