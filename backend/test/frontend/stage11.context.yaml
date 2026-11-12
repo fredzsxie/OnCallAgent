@@ -1,0 +1,30 @@
+purpose:
+  stands_in_for: OpenAI-compatible chat, planner and executor HTTP endpoints and Prometheus alerts.
+  unblocks: Local browser acceptance of the shared knowledge catalog, publication flow, chat streaming and operations workspace.
+assumptions:
+  - id: local-shared-knowledge-workspace
+    status: supported
+    claim: The local acceptance workspace can upload and update Markdown, browse its active version and search it through the real controllers and SQLite catalog.
+    reason: The browser showed a published SOP, a changed active version after replacement, all three retrieval modes and correct empty-filter results.
+    verification: On 2026-11-12, exercised the browser helper with PublicationMemory, uploaded a SOP through the file chooser, replaced it with a new file, and inspected the resulting directory, body and chunks. Script/image/event-handler and javascript-link nodes were absent from the rendered body. This supports the catalog and UI flow, not Milvus ranking quality.
+    source: backend/test/frontend/helper_test.go; backend/test/testutil/publication.go; frontend/knowledge-view.mjs; docs/knowledge-acceptance.md
+    updated_at: "2026-11-12"
+  - id: local-model-and-alert-transport
+    status: supported
+    claim: The browser helper reaches the configured stand-in model and alert endpoints and completes chat streaming and the operations report under the normal scenario.
+    reason: Observed the completed UI output and simulation request events, rather than relying on the simulation listening event alone.
+    verification: On 2026-11-12, the simulation recorded one chat request, six planner/executor model requests and one Prometheus alerts request, all HTTP 200. The browser completed chat streaming and an operations report with eight detail events. Knowledge requests used the real local HTTP controllers and temporary SQLite, with in-memory retrieval storage.
+    source: backend/test/frontend/stage11.sim.yaml; backend/test/chat/postman/mocks/chat-model/config.yaml; backend/test/ops/postman/model/config.yaml; backend/test/operations/postman/prometheus/config.yaml; docs/knowledge-acceptance.md
+    updated_at: "2026-11-12"
+  - id: production-model-semantic-quality
+    status: unknown
+    claim: Production models consistently cite the correct knowledge sections and produce operationally correct advice across the target CDN corpus.
+    reason: Local model responses are predefined examples; successful transport and report formatting cannot establish semantic quality of a production model.
+    verification: Not established by the local simulation. Real Milvus 2.5.27 retrieval was evaluated separately on thirty synthetic labeled queries; production report evaluation still requires approved business documents and representative incidents.
+    source: backend/test/knowledge/hybrid_integration_test.go; backend/test/knowledge/testdata/retrieval-corpus.json; docs/knowledge-acceptance.md
+    updated_at: "2026-11-12"
+fingerprints:
+  - id: knowledge-workspace-20261112
+    date: "2026-11-12"
+    commit: "77ea182 with the pending acceptance helpers and corpus in the working tree"
+    cli: "1.74.0"

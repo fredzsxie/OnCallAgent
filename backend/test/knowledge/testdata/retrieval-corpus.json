@@ -1,0 +1,404 @@
+{
+  "note": "Synthetic acceptance corpus; examples are not approved production SOPs.",
+  "documents": [
+    {
+      "source": "origin.md",
+      "metadata": {
+        "title": "回源",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "Origin Fetch",
+          "origin"
+        ],
+        "alertNames": []
+      },
+      "body": "# 回源\n\n回源是缓存节点向源站请求内容的过程。缓存未命中时需要获取源站响应。\n"
+    },
+    {
+      "source": "hit-ratio.md",
+      "metadata": {
+        "title": "缓存命中率",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "Cache Hit Ratio",
+          "CHR"
+        ],
+        "alertNames": []
+      },
+      "body": "# 缓存命中率\n\n缓存命中率衡量由缓存直接响应的请求比例，用于观察缓存效果。\n"
+    },
+    {
+      "source": "ttl.md",
+      "metadata": {
+        "title": "缓存有效期 TTL",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "Time To Live",
+          "TTL"
+        ],
+        "alertNames": []
+      },
+      "body": "# 缓存有效期 TTL\n\nTTL 是缓存内容保持新鲜的有效时长，过期后需要按策略验证或重新获取。\n"
+    },
+    {
+      "source": "purge.md",
+      "metadata": {
+        "title": "缓存刷新",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "Purge",
+          "缓存失效"
+        ],
+        "alertNames": []
+      },
+      "body": "# 缓存刷新\n\n缓存刷新使指定缓存内容失效，后续请求根据缓存策略重新获取内容。\n"
+    },
+    {
+      "source": "prefetch.md",
+      "metadata": {
+        "title": "缓存预热",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "Prefetch",
+          "预取"
+        ],
+        "alertNames": []
+      },
+      "body": "# 缓存预热\n\n缓存预热提前拉取内容到缓存，减少首个访问请求等待回源的情况。\n"
+    },
+    {
+      "source": "stale.md",
+      "metadata": {
+        "title": "过期缓存复用",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "stale-while-revalidate",
+          "stale"
+        ],
+        "alertNames": []
+      },
+      "body": "# 过期缓存复用\n\n过期缓存复用允许在策略条件内返回已有内容，同时执行后台验证或更新。\n"
+    },
+    {
+      "source": "shield.md",
+      "metadata": {
+        "title": "父缓存 Shield",
+        "docType": "glossary",
+        "domain": "cdn",
+        "service": "cache",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "Origin Shield",
+          "shield"
+        ],
+        "alertNames": []
+      },
+      "body": "# 父缓存 Shield\n\n父缓存作为边缘节点与源站之间的额外缓存层，可以汇聚回源请求。\n"
+    },
+    {
+      "source": "edge-5xx.md",
+      "metadata": {
+        "title": "边缘 5xx 告警排查",
+        "docType": "sop",
+        "domain": "cdn",
+        "service": "edge",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "edge 502",
+          "edge 503"
+        ],
+        "alertNames": [
+          "CDN_EDGE_5XX"
+        ]
+      },
+      "body": "# 边缘 5xx 告警排查\n\n示例告警 CDN_EDGE_5XX 表示边缘错误响应升高。\n\n## 处理与验证\n核对受影响节点、域名和状态码，区分缓存层与源站响应。检查 502、503 的时间范围与上游变化，修复后对比错误率和测试请求。\n"
+    },
+    {
+      "source": "origin-timeout.md",
+      "metadata": {
+        "title": "回源超时告警排查",
+        "docType": "sop",
+        "domain": "cdn",
+        "service": "edge",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "upstream timed out",
+          "origin timeout",
+          "504"
+        ],
+        "alertNames": [
+          "CDN_ORIGIN_TIMEOUT"
+        ]
+      },
+      "body": "# 回源超时告警排查\n\n示例告警 CDN_ORIGIN_TIMEOUT 指向回源请求超时。\n\n## 处理与验证\n核对 504 和 upstream timed out 的时间范围，检查连接与响应耗时。检查源站容量和回源网络，按变更流程处理后验证耗时与超时率。\n"
+    },
+    {
+      "source": "tls.md",
+      "metadata": {
+        "title": "TLS 握手告警排查",
+        "docType": "sop",
+        "domain": "cdn",
+        "service": "edge",
+        "tags": [
+          "acceptance"
+        ],
+        "aliases": [
+          "SSL handshake",
+          "TLS handshake"
+        ],
+        "alertNames": [
+          "CDN_TLS_HANDSHAKE"
+        ]
+      },
+      "body": "# TLS 握手告警排查\n\n示例告警 CDN_TLS_HANDSHAKE 指向 TLS 连接建立失败。\n\n## 处理与验证\n检查证书有效期、证书链与目标域名，核对 SNI 和握手错误。按变更流程处理后验证握手成功率与证书信息。\n"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q01-1",
+      "query": "回源是什么意思",
+      "relevantSources": [
+        "origin.md"
+      ]
+    },
+    {
+      "id": "q01-2",
+      "query": "Origin Fetch 的含义",
+      "relevantSources": [
+        "origin.md"
+      ]
+    },
+    {
+      "id": "q01-3",
+      "query": "缓存没命中时向源站取内容叫什么",
+      "relevantSources": [
+        "origin.md"
+      ]
+    },
+    {
+      "id": "q02-1",
+      "query": "缓存命中率怎么理解",
+      "relevantSources": [
+        "hit-ratio.md"
+      ]
+    },
+    {
+      "id": "q02-2",
+      "query": "Cache Hit Ratio 是什么",
+      "relevantSources": [
+        "hit-ratio.md"
+      ]
+    },
+    {
+      "id": "q02-3",
+      "query": "CHR 指哪项缓存指标",
+      "relevantSources": [
+        "hit-ratio.md"
+      ]
+    },
+    {
+      "id": "q03-1",
+      "query": "TTL 是什么",
+      "relevantSources": [
+        "ttl.md"
+      ]
+    },
+    {
+      "id": "q03-2",
+      "query": "缓存有效期是什么意思",
+      "relevantSources": [
+        "ttl.md"
+      ]
+    },
+    {
+      "id": "q03-3",
+      "query": "Time To Live 和内容过期有什么关系",
+      "relevantSources": [
+        "ttl.md"
+      ]
+    },
+    {
+      "id": "q04-1",
+      "query": "Purge 缓存刷新是什么",
+      "relevantSources": [
+        "purge.md"
+      ]
+    },
+    {
+      "id": "q04-2",
+      "query": "让旧缓存内容失效应该查哪个术语",
+      "relevantSources": [
+        "purge.md"
+      ]
+    },
+    {
+      "id": "q04-3",
+      "query": "缓存刷新与失效的概念",
+      "relevantSources": [
+        "purge.md"
+      ]
+    },
+    {
+      "id": "q05-1",
+      "query": "Prefetch 是什么",
+      "relevantSources": [
+        "prefetch.md"
+      ]
+    },
+    {
+      "id": "q05-2",
+      "query": "提前拉取资源到 CDN 缓存叫什么",
+      "relevantSources": [
+        "prefetch.md"
+      ]
+    },
+    {
+      "id": "q05-3",
+      "query": "缓存预热的目的",
+      "relevantSources": [
+        "prefetch.md"
+      ]
+    },
+    {
+      "id": "q06-1",
+      "query": "stale-while-revalidate 是什么",
+      "relevantSources": [
+        "stale.md"
+      ]
+    },
+    {
+      "id": "q06-2",
+      "query": "后台更新时先返回过期缓存的策略",
+      "relevantSources": [
+        "stale.md"
+      ]
+    },
+    {
+      "id": "q06-3",
+      "query": "stale 内容复用是什么意思",
+      "relevantSources": [
+        "stale.md"
+      ]
+    },
+    {
+      "id": "q07-1",
+      "query": "Origin Shield 是什么",
+      "relevantSources": [
+        "shield.md"
+      ]
+    },
+    {
+      "id": "q07-2",
+      "query": "汇聚边缘回源请求的父缓存层",
+      "relevantSources": [
+        "shield.md"
+      ]
+    },
+    {
+      "id": "q07-3",
+      "query": "shield 父缓存概念",
+      "relevantSources": [
+        "shield.md"
+      ]
+    },
+    {
+      "id": "q08-1",
+      "query": "CDN_EDGE_5XX 怎么排查",
+      "relevantSources": [
+        "edge-5xx.md"
+      ]
+    },
+    {
+      "id": "q08-2",
+      "query": "边缘节点出现 502 和 503 应检查什么",
+      "relevantSources": [
+        "edge-5xx.md"
+      ]
+    },
+    {
+      "id": "q08-3",
+      "query": "边缘 5xx 升高如何确认影响并验证恢复",
+      "relevantSources": [
+        "edge-5xx.md"
+      ]
+    },
+    {
+      "id": "q09-1",
+      "query": "CDN_ORIGIN_TIMEOUT 怎么处理",
+      "relevantSources": [
+        "origin-timeout.md"
+      ]
+    },
+    {
+      "id": "q09-2",
+      "query": "upstream timed out 和 504 如何排查",
+      "relevantSources": [
+        "origin-timeout.md"
+      ]
+    },
+    {
+      "id": "q09-3",
+      "query": "回源连接或响应超时需要核对哪些证据",
+      "relevantSources": [
+        "origin-timeout.md"
+      ]
+    },
+    {
+      "id": "q10-1",
+      "query": "CDN_TLS_HANDSHAKE 怎么排查",
+      "relevantSources": [
+        "tls.md"
+      ]
+    },
+    {
+      "id": "q10-2",
+      "query": "SSL handshake 失败需要检查证书哪些信息",
+      "relevantSources": [
+        "tls.md"
+      ]
+    },
+    {
+      "id": "q10-3",
+      "query": "CDN TLS 握手失败后怎样验证恢复",
+      "relevantSources": [
+        "tls.md"
+      ]
+    }
+  ]
+}

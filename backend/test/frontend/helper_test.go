@@ -6,7 +6,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -16,8 +18,10 @@ import (
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	chatcontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
+	knowledgecontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
@@ -58,8 +62,30 @@ func TestFrontendServerHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer model.Close()
-	store := &testutil.MemoryStore{}
-	graph, err := pipeline.BuildChatAgent(ctx, pipeline.Config{Agent: config.ChatAgent{MaxSteps: 12, Timeout: 60 * time.Second}, TimeZone: "Asia/Shanghai"}, pipeline.Dependencies{Model: model.ToolCallingModel(), Retriever: memoryRetriever{store}})
+	store := &testutil.PublicationMemory{}
+	const max = 10485760
+	cfg := config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: max, ChunkSize: 2000, ChunkOverlap: 200, BatchSize: 16}
+	catalog, err := knowledge.OpenCatalog(filepath.Join(cfg.FileDir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalog.Close()
+	manager, err := knowledge.NewManager(ctx, cfg, catalog, store, "local-browser-fixture:3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	search, err := knowledge.NewSearchService(catalog, store, knowledge.SearchConfig{Mode: "hybrid", TopK: 3, DenseMinScore: .5, Timeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("ONCALL_KNOWLEDGE_HELPER_SEED") == "1" {
+		raw := "---\ntitle: 回源 Origin\ndocType: glossary\ndomain: cdn\nservice: cache\naliases: [Origin Fetch, origin]\ntags: [cdn]\n---\n# 回源\n\n缓存未命中时向源站获取内容。\n"
+		if _, err = manager.Ingest(ctx, "cdn/origin.md", strings.NewReader(raw), knowledge.MetadataPatch{}, nil, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	graph, err := pipeline.BuildChatAgent(ctx, pipeline.Config{Agent: config.ChatAgent{MaxSteps: 12, Timeout: 60 * time.Second}, TimeZone: "Asia/Shanghai"}, pipeline.Dependencies{Model: model.ToolCallingModel(), Retriever: search})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,26 +101,28 @@ func TestFrontendServerHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const max = 10485760
-	knowledge, err := testutil.NewKnowledgeService(config.Knowledge{FileDir: t.TempDir(), MaxUploadBytes: max, ChunkSize: 2000, ChunkOverlap: 200, BatchSize: 16}, store)
+	knowledgeService, err := knowledge.NewManagedKnowledgeService(cfg, manager)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	server := ghttp.GetServer("frontend-test-" + guid.S())
 	server.SetDumpRouterMap(false)
 	server.SetAccessLogEnabled(false)
 	server.SetErrorLogEnabled(false)
 	server.SetClientMaxBodySize(max + middleware.MultipartOverhead)
-	opsService := addOpsFixture(t, ctx, server, store)
+	opsService := addOpsFixture(t, ctx, server, &store.MemoryStore, search)
 	server.Group("/api", func(group *ghttp.RouterGroup) {
 		group.Middleware(middleware.ResponseMiddleware)
 		group.Bind(chatcontroller.NewV1(chat, streams))
+		group.Bind(knowledgecontroller.NewV1(manager, search))
 		if opsService != nil {
 			group.Bind(chatcontroller.NewAIOpsV1(opsService))
 		}
 		group.Group("", func(files *ghttp.RouterGroup) {
 			files.Middleware(middleware.UploadBody(max))
-			files.Bind(upload.NewV1(knowledge))
+			files.Bind(upload.NewV1(knowledgeService))
+			files.Bind(knowledgecontroller.NewWriteV1(manager))
 		})
 	})
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

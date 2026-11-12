@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	einoretriever "github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
@@ -30,13 +31,19 @@ func (a opsFixtureAgent) RunWithEvents(ctx context.Context, q string, sink func(
 }
 
 // Only the explicit local acceptance helper exposes scenario controls; production routes never do.
-func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, store *testutil.MemoryStore) *aiops.AIOpsService {
+func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, store *testutil.MemoryStore, shared ...einoretriever.Retriever) *aiops.AIOpsService {
 	t.Helper()
 	base := os.Getenv("ONCALL_OPS_SIM_BASE_URL")
 	if base == "" {
 		return nil
 	}
-	r, err := retriever.NewMilvusRetriever(memoryRetriever{store}, config.Retrieval{TopK: 3, ScoreThreshold: -1})
+	var baseRetriever einoretriever.Retriever = memoryRetriever{store}
+	retrievalMode := "dense"
+	if len(shared) > 0 {
+		baseRetriever = shared[0]
+		retrievalMode = "hybrid"
+	}
+	r, err := retriever.NewMilvusRetriever(baseRetriever, config.Retrieval{Mode: retrievalMode, TopK: 3, ScoreThreshold: -1})
 	if err != nil {
 		t.Fatal(err)
 	}

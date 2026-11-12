@@ -57,7 +57,7 @@ func settings() pipeline.Config {
 	return pipeline.Config{Agent: config.ChatAgent{MaxSteps: 12, Timeout: time.Second}, TimeZone: "Asia/Shanghai"}
 }
 func documents(context.Context, string) ([]*schema.Document, error) {
-	return []*schema.Document{(&schema.Document{ID: "chunk-1", Content: "Refresh signing keys, then verify authentication.", MetaData: map[string]any{"source": "auth.md", "title": "Recovery"}}).WithScore(0.9)}, nil
+	return []*schema.Document{(&schema.Document{ID: "chunk-1", Content: "Refresh signing keys, then verify authentication.", MetaData: map[string]any{"source": "auth.md", "title": "Recovery", "section_path": "Authentication / Recovery", "version": "fixture-version"}}).WithScore(0.9)}, nil
 }
 func build(t *testing.T, cfg pipeline.Config, deps pipeline.Dependencies) compose.Runnable[*pipeline.UserMessage, *schema.Message] {
 	t.Helper()
@@ -99,7 +99,7 @@ func TestGraphJoinsBranchesAndFormatsEvidence(t *testing.T) {
 		if !ready.Load() || len(in) != 4 {
 			t.Errorf("branches not merged: %+v", in)
 		}
-		for _, want := range []string{"auth.md", "Recovery", "Refresh signing keys", "2026-10-16T08:00:00+08:00"} {
+		for _, want := range []string{"auth.md", "Recovery", "Section: Authentication / Recovery", "Version: fixture-version", "Refresh signing keys", "2026-10-16T08:00:00+08:00"} {
 			if !strings.Contains(in[0].Content, want) {
 				t.Errorf("missing %q in prompt: %s", want, in[0].Content)
 			}
