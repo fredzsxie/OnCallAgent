@@ -156,7 +156,7 @@ func (c *Catalog) BySource(ctx context.Context, source string) (DocumentInfo, er
 
 func (c *Catalog) List(ctx context.Context, f Filters, q string, page, size int) (DocumentPage, error) {
 	out := DocumentPage{Items: []DocumentInfo{}, Page: page, PageSize: size}
-	if page < 1 || size < 1 || size > 100 || len(q) > 1024 {
+	if page < 1 || page > 1000000 || size < 1 || size > 100 || len(q) > 1024 {
 		return out, ErrInvalidMetadata
 	}
 	if err := f.Validate(); err != nil {

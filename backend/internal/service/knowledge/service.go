@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -46,6 +47,7 @@ type Result struct {
 type KnowledgeService struct {
 	cfg       config.Knowledge
 	indexFile IndexFileFunc
+	manager   *Manager
 }
 
 func NewKnowledgeService(cfg config.Knowledge, indexFile IndexFileFunc) (*KnowledgeService, error) {
@@ -69,6 +71,17 @@ func Supported(source string) bool {
 func UploadName(filename string) string { return path.Base(strings.ReplaceAll(filename, "\\", "/")) }
 
 func (s *KnowledgeService) Ingest(ctx context.Context, source string, input io.Reader) (out Result, err error) {
+	if s.manager != nil {
+		data, err := ReadDocument(ctx, input, s.cfg.MaxUploadBytes)
+		if err != nil {
+			return out, err
+		}
+		d, err := s.manager.Ingest(ctx, source, bytes.NewReader(data), MetadataPatch{}, nil, false)
+		if err != nil {
+			return out, err
+		}
+		return Result{FileName: filepath.Base(d.FilePath), FilePath: d.FilePath, FileSize: int64(len(data)), Source: d.Source, ContentHash: digest(string(data)), ChunkCount: d.ChunkCount}, nil
+	}
 	started := time.Now()
 	stage := "validate"
 	defer func() {
@@ -193,4 +206,14 @@ func (s *KnowledgeService) save(name string, data []byte) (saved string, size in
 		return "", 0, fmt.Errorf("saved file size does not match input")
 	}
 	return saved, info.Size(), nil
+}
+
+func NewManagedKnowledgeService(cfg config.Knowledge, m *Manager) (*KnowledgeService, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, ErrInvalidDocument
+	}
+	return &KnowledgeService{cfg: cfg, manager: m}, nil
 }

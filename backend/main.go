@@ -3,19 +3,19 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	chatpipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
-	knowledgepipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/knowledge_index_pipeline"
 	opspipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/tools"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
+	knowledgecontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
@@ -174,19 +174,26 @@ func run() (err error) {
 		return err
 	}
 
-	if err := os.MkdirAll(knowledgeCfg.FileDir, 0700); err != nil {
-		return err
+	if !store.HybridEnabled() {
+		return fmt.Errorf("knowledge API requires a v2 collection; run knowledge_migrate first")
 	}
-	knowledgeCfg.FileDir, err = filepath.EvalSymlinks(knowledgeCfg.FileDir)
+	catalog, err := knowledge.OpenCatalog(knowledgeCfg.CatalogPath)
 	if err != nil {
 		return err
 	}
-	stage = "knowledge_graph"
-	graph, err := knowledgepipeline.BuildKnowledgeIndexing(ctx, knowledgepipeline.Config{Root: knowledgeCfg.FileDir, Knowledge: knowledgeCfg}, store)
+	defer catalog.Close()
+	manager, err := knowledge.NewManager(ctx, knowledgeCfg, catalog, store, store.Profile(embeddingCfg.Model))
 	if err != nil {
 		return err
 	}
-	knowledgeService, err := knowledge.NewKnowledgeService(knowledgeCfg, knowledgepipeline.NewFileIndexer(graph))
+	if err = manager.Recover(ctx); err != nil {
+		return err
+	}
+	search, err := knowledge.NewSearchService(catalog, store, knowledge.SearchConfig{Mode: knowledge.Hybrid, TopK: retrievalCfg.TopK, DenseMinScore: retrievalCfg.ScoreThreshold, Timeout: milvusCfg.Timeout})
+	if err != nil {
+		return err
+	}
+	knowledgeService, err := knowledge.NewManagedKnowledgeService(knowledgeCfg, manager)
 	if err != nil {
 		return err
 	}
@@ -196,11 +203,13 @@ func run() (err error) {
 	s.Group("/api", func(group *ghttp.RouterGroup) {
 		group.Middleware(middleware.ResponseMiddleware)
 		group.Bind(health.NewV1())
+		group.Bind(knowledgecontroller.NewV1(manager, search))
 		group.Bind(chat.NewV1(chatService, streams))
 		group.Bind(chat.NewAIOpsV1(opsService))
 		group.Group("", func(files *ghttp.RouterGroup) {
 			files.Middleware(middleware.UploadBody(knowledgeCfg.MaxUploadBytes))
 			files.Bind(upload.NewV1(knowledgeService))
+			files.Bind(knowledgecontroller.NewWriteV1(manager))
 		})
 	})
 	s.SetClientMaxBodySize(knowledgeCfg.MaxUploadBytes + middleware.MultipartOverhead)

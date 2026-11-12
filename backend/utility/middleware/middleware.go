@@ -73,6 +73,14 @@ func ErrorResponse(err error) (int, Response) {
 	switch {
 	case errors.Is(err, context.Canceled):
 		status, message = http.StatusRequestTimeout, "request cancelled"
+	case errors.Is(err, knowledge.ErrNotFound):
+		status, message = http.StatusNotFound, "knowledge document not found"
+	case errors.Is(err, knowledge.ErrConflict):
+		status, message = http.StatusConflict, "knowledge source or version conflict"
+	case errors.Is(err, knowledge.ErrInvalidMetadata), errors.Is(err, knowledge.ErrInvalidSearch):
+		status, message = http.StatusBadRequest, "invalid knowledge parameters"
+	case errors.Is(err, knowledge.ErrSearchFailed):
+		status, message = http.StatusBadGateway, "knowledge search failed"
 	case errors.Is(err, knowledge.ErrSave):
 		status, message = http.StatusInternalServerError, "file save failed"
 		data = map[string]any{"stage": "save", "retryable": true}

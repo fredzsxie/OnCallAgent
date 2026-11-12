@@ -198,3 +198,11 @@ curl -i --max-time 210 http://127.0.0.1:6872/api/ai_ops \
 ```
 
 失败时可能包含已完成的部分 detail，不返回有效 result。这里的字符串 `data.code` 是 API 错误契约；它与应用日志中仅表示数值 HTTP 状态码的 `code` 不同。
+
+## 知识库接口
+
+知识库目录、正文和切片分别通过 `GET /api/knowledge/documents`、`GET /api/knowledge/documents/{id}`、`GET /api/knowledge/documents/{id}/chunks` 获取，支持 `page`、`pageSize` 分页。目录支持 `q` 标题查询及 `docType`、`domain`、`service`、`tags`、`alertName` 过滤。
+
+`POST /api/knowledge/search` 接收 `query`、`mode`（dense/bm25/hybrid）、`topK`（1–100，默认 10）和 `filters`，返回命中片段、来源、文档版本及 `scoreType`（cosine/bm25/rrf）。`denseMinScore` 仅允许用于 dense。
+
+`POST /api/knowledge/documents` 与 `PUT /api/knowledge/documents/{id}` 接收 multipart `file` 和可选 JSON 字符串 `metadata`。新建可传逻辑 `source`；更新必须传 `expectedVersion`，来源保持原值。来源或版本冲突返回 409，文档不存在返回 404。显式 metadata 字段覆盖 Markdown front matter；省略字段使用文件值或默认值。
