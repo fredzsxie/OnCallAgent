@@ -172,12 +172,12 @@ func TestActualADKAnalysisAndRecoverableToolFailures(t *testing.T) {
 				if e.Sequence != i+1 || e.Timestamp == "" {
 					t.Fatal(e)
 				}
-				if e.Type == "tool" {
+				if e.Type == "tool" && e.Status != "started" {
 					toolCount++
 					if e.Tool == "query_prometheus_alerts" && scenario.failed && e.Status != "failed" {
 						t.Fatal(e)
 					}
-					if scenario.empty && (e.Tool == "query_internal_docs" || e.Tool == "query_prometheus_alerts") && !strings.HasSuffix(e.Summary, "=0") {
+					if scenario.empty && (e.Tool == "query_internal_docs" || e.Tool == "query_prometheus_alerts") && (e.Count == nil || *e.Count != 0) {
 						t.Fatal(e)
 					}
 				}
@@ -338,7 +338,7 @@ func TestCancellationTimeoutAndConcurrentStateIsolation(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if len(r.Detail) != 4 || r.Detail[1].Iteration != 1 || r.Detail[0].Sequence != 1 {
+			if len(r.Detail) != 7 || r.Detail[2].Iteration != 1 || r.Detail[0].Sequence != 1 {
 				t.Errorf("shared state: %+v", r.Detail)
 			}
 		}()
@@ -445,7 +445,7 @@ func TestMalformedToolResultCannotBecomeZeroAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range r.Detail {
-		if e.Type == "tool" && (e.Status != "failed" || e.Count != nil) {
+		if e.Type == "tool" && e.Status != "started" && (e.Status != "failed" || e.Count != nil) {
 			t.Fatal("malformed alerts must not have a valid count", e)
 		}
 	}

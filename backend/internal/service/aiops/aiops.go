@@ -105,12 +105,5 @@ func Wrap(err error, detail []pipeline.Event) *Error {
 }
 
 func cloneEvents(events []pipeline.Event) []pipeline.Event {
-	result := append([]pipeline.Event{}, events...)
-	for i := range result {
-		if result[i].Count != nil {
-			count := *result[i].Count
-			result[i].Count = &count
-		}
-	}
-	return result
+	return pipeline.CloneEvents(events)
 }

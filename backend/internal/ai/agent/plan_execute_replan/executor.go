@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
@@ -19,13 +18,15 @@ func NewExecutor(ctx context.Context, m model.ToolCallingChatModel, tools []tool
 	return planexecute.NewExecutor(ctx, &planexecute.ExecutorConfig{Model: m, MaxIterations: maxSteps,
 		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools, ToolCallMiddlewares: []compose.ToolMiddleware{{Invokable: toolMiddleware}}}},
 		GenInputFn: func(ctx context.Context, in *planexecute.ExecutionContext) ([]adk.Message, error) {
-			s := state(ctx)
-			if s != nil {
-				s.mu.Lock()
-				s.iteration++
-				s.mu.Unlock()
+			var current plan
+			data, err := in.Plan.MarshalJSON()
+			if err != nil {
+				return nil, err
 			}
-			record(ctx, "Executor", "execute", "", "started", in.Plan.FirstStep())
+			if err = current.UnmarshalJSON(data); err != nil {
+				return nil, err
+			}
+			beginExecution(ctx, current.Steps)
 			p, err := in.Plan.MarshalJSON()
 			if err != nil {
 				return nil, err
@@ -42,31 +43,19 @@ func NewExecutor(ctx context.Context, m model.ToolCallingChatModel, tools []tool
 
 func toolMiddleware(next compose.InvokableToolEndpoint) compose.InvokableToolEndpoint {
 	return func(ctx context.Context, in *compose.ToolInput) (*compose.ToolOutput, error) {
+		id := startTool(ctx, in.Name, toolInput(in.Name, in.Arguments))
 		output, err := next(ctx, in)
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			err = ctx.Err()
 		}
-		if errors.Is(err, context.Canceled) {
-			return nil, context.Canceled
-		}
-		var result map[string]json.RawMessage
-		summary := "tool completed"
-		var counts []int
+		var detail *StepOutput
+		var count *int
+		var summary string
 		if err == nil {
-			if output == nil || json.Unmarshal([]byte(output.Result), &result) != nil || result == nil {
+			if output == nil {
 				err = operations.ErrInvalidResponse
 			} else {
-				for _, key := range []string{"alerts", "documents", "records"} {
-					if data, ok := result[key]; ok {
-						var values []json.RawMessage
-						if json.Unmarshal(data, &values) != nil || values == nil {
-							err = operations.ErrInvalidResponse
-							break
-						}
-						summary = fmt.Sprintf("%s=%d", key, len(values))
-						counts = []int{len(values)}
-					}
-				}
+				detail, count, summary, err = toolResult(in.Name, output.Result)
 			}
 		}
 		if err != nil {
@@ -74,11 +63,19 @@ func toolMiddleware(next compose.InvokableToolEndpoint) compose.InvokableToolEnd
 				err = operations.ErrInvalidInput
 			}
 			failure := operations.Failure(in.Name, err)
-			record(ctx, "Executor", "tool", in.Name, "failed", failure.Code)
+			public := publicToolError(failure)
+			status := "failed"
+			if errors.Is(err, context.Canceled) {
+				status = "cancelled"
+			}
+			endTool(ctx, id, status, public.Message, nil, public, nil)
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				return nil, err
+			}
 			data, _ := json.Marshal(map[string]any{"error": failure})
 			return &compose.ToolOutput{Result: string(data)}, nil
 		}
-		record(ctx, "Executor", "tool", in.Name, "completed", summary, counts...)
+		endTool(ctx, id, "completed", summary, detail, nil, count)
 		return output, nil
 	}
 }

@@ -18,6 +18,7 @@ func NewReplanner(ctx context.Context, m model.ToolCallingChatModel, available s
 		RespondTool: &schema.ToolInfo{Name: "Respond", Desc: "Finish with all five report sections. Explicitly state missing evidence and disabled or failed tools.", ParamsOneOf: params},
 		NewPlan:     func(context.Context) planexecute.Plan { return &plan{} },
 		GenInputFn: func(ctx context.Context, in *planexecute.ExecutionContext) ([]adk.Message, error) {
+			beginReview(ctx)
 			p, err := in.Plan.MarshalJSON()
 			if err != nil {
 				return nil, err

@@ -134,7 +134,7 @@ func TestAIOpsActualGraphHTTPContractAndCounts(t *testing.T) {
 			}
 			seen := false
 			for _, e := range body.Data.Detail {
-				if e.Tool == "query_prometheus_alerts" {
+				if e.Tool == "query_prometheus_alerts" && e.Status != "started" {
 					seen = true
 					if scenario.fail {
 						if e.Status != "failed" || e.Count != nil {

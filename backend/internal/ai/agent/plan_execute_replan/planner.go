@@ -54,6 +54,7 @@ func NewPlanner(ctx context.Context, m model.ToolCallingChatModel, available str
 		ToolCallingChatModel: &planningModel{base: m},
 		NewPlan:              func(context.Context) planexecute.Plan { return &plan{} },
 		GenInputFn: func(ctx context.Context, input []adk.Message) ([]adk.Message, error) {
+			beginPlanning(ctx)
 			msgs, err := planexecute.PlannerPrompt.Format(ctx, map[string]any{"input": input})
 			if err != nil {
 				return nil, err

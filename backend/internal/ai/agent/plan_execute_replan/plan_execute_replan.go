@@ -119,11 +119,6 @@ loop:
 						runErr = ErrExecution
 						break loop
 					}
-					record(ctx, "Planner", "plan", "", "completed", strings.Join(p.Steps, "; "))
-				case "Executor":
-					if len(msg.ToolCalls) == 0 && msg.Role == "assistant" {
-						record(ctx, "Executor", "execute", "", "completed", "step completed")
-					}
 				case "Replanner":
 					var body map[string]json.RawMessage
 					if json.Unmarshal([]byte(msg.Content), &body) != nil {
@@ -136,7 +131,6 @@ loop:
 							runErr = ErrExecution
 							break loop
 						}
-						record(ctx, "Replanner", "replan", "", "completed", strings.Join(p.Steps, "; "))
 					} else {
 						var sections reportSections
 						if json.Unmarshal([]byte(msg.Content), &sections) != nil {
@@ -174,10 +168,10 @@ loop:
 		if sinkErr != nil {
 			runErr = sinkErr
 		}
-		record(ctx, "Runner", "error", "", "failed", runErr.Error())
+		finishProgress(ctx, runErr)
 		cancel()
 	} else {
-		record(ctx, "Runner", "complete", "", "completed", "final report accepted")
+		finishProgress(ctx, nil)
 	}
 	detail, sinkErr := s.finish()
 	if sinkErr != nil {
