@@ -31,7 +31,7 @@ func ResponseMiddleware(r *ghttp.Request) {
 		return
 	}
 	if err := r.GetError(); err != nil {
-		if r.URL.Path == "/api/ai_ops" {
+		if r.URL.Path == "/api/ai_ops" || r.URL.Path == "/api/ai_ops_stream" {
 			var failure *aiops.Error
 			if !errors.As(err, &failure) {
 				if gerror.Code(err) == gcode.CodeValidationFailed || gerror.Code(err) == gcode.CodeInvalidParameter {

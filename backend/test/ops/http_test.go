@@ -36,6 +36,10 @@ func service(t *testing.T, agent aiops.Agent, budget time.Duration) *aiops.AIOps
 }
 
 func startOpsAPI(t *testing.T, s *aiops.AIOpsService, roots ...context.Context) string {
+	return startOpsAPIWriter(t, s, nil, roots...)
+}
+
+func startOpsAPIWriter(t *testing.T, s *aiops.AIOpsService, wrap func(http.ResponseWriter) http.ResponseWriter, roots ...context.Context) string {
 	t.Helper()
 	server := ghttp.GetServer("ops-http-" + guid.S())
 	server.SetDumpRouterMap(false)
@@ -48,6 +52,9 @@ func startOpsAPI(t *testing.T, s *aiops.AIOpsService, roots ...context.Context) 
 		g.Middleware(middleware.ResponseMiddleware)
 		g.Bind(controller.NewAIOpsV1(s))
 	})
+	if wrap != nil {
+		server.SetHandler(func(w http.ResponseWriter, r *http.Request) { server.ServeHTTP(wrap(w), r) })
+	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

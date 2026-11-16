@@ -64,7 +64,7 @@ func TestStartupRouteTablePreservesAPIInformation(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{"已注册 API 路由", "count=5", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE", "POST", "GET", "/api/ai_ops", "/api/chat", "/api/chat_stream", "/api/health", "/api/upload", "ResponseMiddleware", "UploadBody", "AIOpsController", "ControllerV1"} {
+			for _, want := range []string{"已注册 API 路由", "count=6", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE", "POST", "GET", "/api/ai_ops", "/api/ai_ops_stream", "/api/chat", "/api/chat_stream", "/api/health", "/api/upload", "ResponseMiddleware", "UploadBody", "AIOpsController", "ControllerV1"} {
 				if !strings.Contains(output, want) {
 					t.Fatalf("missing %q in %s", want, output)
 				}

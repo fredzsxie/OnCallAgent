@@ -29,3 +29,8 @@ type AIOpsRes struct {
 	Result string           `json:"result"`
 	Detail []pipeline.Event `json:"detail"`
 }
+
+type AIOpsStreamReq struct {
+	g.Meta `path:"/ai_ops_stream" method:"post" summary:"运维分析实时进度"`
+}
+type AIOpsStreamRes struct{}
