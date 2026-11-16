@@ -162,7 +162,7 @@ func TestProgressToolDetailsTruncateAndDoNotExposeExtraFields(t *testing.T) {
 						t.Fatal("bad alert detail or copy")
 					}
 				} else {
-					if len(e.Output.Documents) != 20 || !e.Output.Documents[0].Truncated || len([]rune(e.Output.Documents[0].Excerpt)) > 501 || e.Input.Query != "HighCPU" {
+					if len(e.Output.Documents) != 20 || !e.Output.Documents[0].Truncated || len([]rune(e.Output.Documents[0].Excerpt)) > 500 || e.Input.Query != "HighCPU" {
 						t.Fatal("bad document detail")
 					}
 				}

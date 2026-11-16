@@ -14,7 +14,7 @@ import (
 func clip(value string, limit int) string {
 	r := []rune(value)
 	if len(r) > limit {
-		return string(r[:limit]) + "…"
+		return string(r[:limit-1]) + "…"
 	}
 	return value
 }

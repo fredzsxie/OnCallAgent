@@ -258,15 +258,21 @@ func finishProgress(ctx context.Context, err error) {
 		if err == nil {
 			s.end(ctx, s.replannerID, "completed", "证据复核完成，已生成并校验分析报告", nil, nil, nil)
 		}
-		// Close children before parents, in creation order, even on cancellation.
+		code := ErrorCode(err)
+		messages := map[string]string{"timeout": "分析超时，本步骤未完成", "cancelled": "分析已取消，本步骤未完成", "plan_limit": "达到计划迭代上限，本步骤未完成", "executor_limit": "达到单步执行上限，本步骤未完成", "invalid_report": "未获得完整有效的分析报告", "event_write_failed": "进度连接写入失败，本步骤未确认"}
+		message := messages[code]
+		if message == "" {
+			message = "模型或依赖执行失败，本步骤未完成"
+		}
+		// Close children before parents, in reverse creation order.
 		for i := s.nextID; i > 0; i-- {
 			id := fmt.Sprintf("step-%d", i)
 			if _, ok := s.active[id]; ok {
 				status := "failed"
-				if ctx.Err() == context.Canceled {
+				if code == "cancelled" {
 					status = "cancelled"
 				}
-				s.end(ctx, id, status, "分析中断："+ErrorCode(err), nil, &StepError{Code: ErrorCode(err), Message: "本步骤未完成", Retryable: false}, nil)
+				s.end(ctx, id, status, message, nil, &StepError{Code: code, Message: message, Retryable: code == "timeout" || code == "execution_failed"}, nil)
 			}
 		}
 		status, kind, summary := "completed", "complete", "分析报告已通过校验"

@@ -233,6 +233,21 @@ func TestReplanAndBothExecutionLimits(t *testing.T) {
 			if err != nil && r.Report != "" {
 				t.Fatal("error returned a report")
 			}
+			assertStepPairs(t, r.Detail)
+			if scenario == "adjust" {
+				completed := map[int]bool{}
+				for _, e := range r.Detail {
+					if e.Type == "execute" && e.Status == "completed" {
+						if completed[e.Iteration] {
+							t.Fatal("duplicate execution completion")
+						}
+						completed[e.Iteration] = true
+					}
+				}
+				if len(completed) != 2 {
+					t.Fatal("lost replanned execution")
+				}
+			}
 		})
 	}
 }
