@@ -58,12 +58,12 @@
       </div>
       <section id="ops-view" class="ops-view" aria-label="AI Ops 运维分析" hidden>
         <div class="ops-content">
-          <div class="ops-heading"><div><p class="eyebrow">AI OPS / 只读排查</p><h2>运维分析</h2><p>检查当前告警，结合时间、内部手册与可用日志生成报告。</p></div><button id="ops-run" class="send-button">开始分析 <span aria-hidden="true">↗</span></button><button id="ops-cancel" class="stop-button" hidden>取消分析</button></div>
+          <div class="ops-heading"><div><p class="eyebrow">AI OPS / 只读排查</p><h2>运维分析</h2><p>检查当前告警，结合时间与内部排查手册生成报告。</p></div><button id="ops-run" class="send-button">开始分析 <span aria-hidden="true">↗</span></button><button id="ops-cancel" class="stop-button" hidden>取消分析</button></div>
           <div id="ops-status" class="ops-status" role="status"><span id="ops-indicator" aria-hidden="true"></span><span id="ops-status-text">准备就绪</span><time id="ops-elapsed" hidden></time></div>
           <p id="ops-notice" class="ops-notice">使用已启用的工具，不执行修复。分析期间请等待，或取消后重新运行。</p>
           <div id="ops-empty" class="ops-empty"><span aria-hidden="true">↗</span><h3>报告将在这里生成</h3><p>包括告警、证据、根因候选、处理建议和未确认事项。</p><p>报告仅保留在当前页面，不进入聊天记忆。</p></div>
           <article id="ops-report" class="message-body ops-report" aria-label="运维分析报告" hidden></article>
-          <details id="ops-details" class="ops-details" hidden><summary>步骤与工具概要 <span id="ops-detail-count"></span></summary><ol id="ops-detail-list"></ol></details>
+          <details id="ops-details" class="ops-details" hidden><summary>步骤与工具概要 <span id="ops-detail-count"></span></summary><p id="ops-current" class="ops-current" role="status" hidden></p><ol id="ops-detail-list" class="ops-timeline" aria-label="分析执行步骤"></ol></details>
         </div>
       </section>
       <section id="knowledge-view" class="knowledge-view" aria-label="知识库" hidden>

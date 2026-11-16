@@ -5,7 +5,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const files = new Set(['index.html', 'styles.css', 'app.js', 'config.js', 'api.mjs', 'sse.mjs', 'history.mjs', 'render.mjs', 'aiops.mjs', 'knowledge.mjs', 'knowledge-view.mjs', 'vendor/marked-18.1.1.umd.js', 'vendor/purify-3.4.17.min.js']);
+const files = new Set(['index.html', 'styles.css', 'app.js', 'config.js', 'api.mjs', 'sse.mjs', 'history.mjs', 'render.mjs', 'aiops.mjs', 'aiops-view.mjs', 'knowledge.mjs', 'knowledge-view.mjs', 'vendor/marked-18.1.1.umd.js', 'vendor/purify-3.4.17.min.js']);
 const types = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8'};
 const hopHeaders = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
 

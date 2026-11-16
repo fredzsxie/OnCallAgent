@@ -1,6 +1,7 @@
 import {chat, upload, validateFile, formatBytes} from './api.mjs';
 import {loadHistory, saveHistory, newSession, newID} from './history.mjs';
 import {OpsTask, opsOutcome} from './aiops.mjs';
+import {OpsProgressView} from './aiops-view.mjs';
 import {initKnowledgeView} from './knowledge-view.mjs';
 import {renderAnswer} from './render.mjs';
 
@@ -13,6 +14,7 @@ let active = state.sessions.find(s => s.id === state.activeId);
 let operation = null;
 let currentView = 'chat';
 let opsTimer;
+const opsProgress = new OpsProgressView({details: $('ops-details'), list: $('ops-detail-list'), count: $('ops-detail-count'), current: $('ops-current')});
 const opsTask = new OpsTask({onChange: renderOps});
 const configuredMax = window.ONCALL_CONFIG?.uploadMaxBytes;
 const uploadMax = Number.isSafeInteger(configuredMax) && configuredMax > 0 ? configuredMax : 10485760;
@@ -261,24 +263,18 @@ function renderOps(value) {
   $('ops-status-text').textContent = labels[value.status] || '准备就绪';
   const failureMessages = {timeout: '分析未在执行预算内完成。可以检查模型响应时间后手动重试。', execution_failed: '模型或依赖服务未能完成分析。请检查服务连接后手动重试。', plan_limit: '已达到计划迭代上限，未生成有效报告。', executor_limit: '已达到单步执行上限，未生成有效报告。', invalid_report: '未获得完整报告，请查看已完成的步骤。'};
   const failureMessage = failureMessages[value.code] || value.message;
-  $('ops-notice').textContent = value.status === 'completed' ? `${outcome.noAlerts ? '未发现活动告警。无告警不代表系统健康。' : outcome.alertsKnown ? '已获取告警结果，请结合证据阅读报告。' : '未获得有效告警查询结果，不能据此判断无告警。'}${outcome.limited ? ' 部分证据缺失或工具失败，请查看报告中的未确认事项。' : ''}` : failureMessage || '正在查询已启用的工具并生成报告，请等待。当前不展示实时节点进度。';
+  $('ops-notice').textContent = value.status === 'completed' ? `${outcome.noAlerts ? '未发现活动告警。无告警不代表系统健康。' : outcome.alertsKnown ? '已获取告警结果，请结合证据阅读报告。' : '未获得有效告警查询结果，不能据此判断无告警。'}${outcome.limited ? ' 部分证据缺失或工具失败，请查看报告中的未确认事项。' : ''}` : failureMessage || '正在调用工具并整理证据，可在下方查看当前步骤和工具结果。';
   $('ops-report').hidden = !value.result;
   if (value.result) renderAnswer($('ops-report'), value.result); else $('ops-report').replaceChildren();
   $('ops-empty').hidden = value.status !== 'idle';
-  $('ops-details').hidden = !value.detail.length;
-  $('ops-details').open = false;
-  $('ops-detail-count').textContent = `${value.detail.length} 条`;
-  $('ops-detail-list').replaceChildren();
-  for (const entry of value.detail) {
-    const item = document.createElement('li'), label = document.createElement('strong');
-    const agents = {Planner: '规划', Executor: '执行', Replanner: '调整计划', Runner: '流程'};
-    const statuses = {started: '开始', completed: '完成', failed: '失败'};
-    label.textContent = `${entry.sequence} · ${entry.iteration ? '第 ' + entry.iteration + ' 轮' : '初始计划'} · ${agents[entry.agent] || entry.agent}${entry.tool ? ' / ' + entry.tool : ''} · ${statuses[entry.status] || entry.status}`;
-    item.append(label, document.createTextNode(entry.summary)); $('ops-detail-list').append(item);
-  }
-  const elapsed = () => { $('ops-elapsed').textContent = `已用 ${Math.max(0, Math.floor(((value.finishedAt ?? Date.now()) - value.startedAt) / 1000))} 秒`; };
+  opsProgress.update(value);
+  const elapsed = () => {
+    const now = value.finishedAt ?? performance.now();
+    $('ops-elapsed').textContent = `已用 ${Math.max(0, Math.floor((now - value.startedAt) / 1000))} 秒`;
+    opsProgress.tick(now);
+  };
   $('ops-elapsed').hidden = value.startedAt === null;
-  elapsed(); if (value.status === 'running') opsTimer = setInterval(elapsed, 1000);
+  elapsed(); if (value.status === 'running') opsTimer = setInterval(elapsed, 100);
 }
 $('view-knowledge').addEventListener('click', () => showView('knowledge'));
 $('view-chat').addEventListener('click', () => showView('chat'));
