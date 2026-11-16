@@ -386,6 +386,309 @@
       ]
     },
     {
+      "name": "Select streaming normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"normal\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"SSE response\",()=>{pm.response.to.have.status(200);pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/event-stream\");});",
+              "const frames=pm.response.text().split(\"\\n\\n\").filter(s=>s.startsWith(\"event: \")).map(s=>({name:s.split(\"\\n\")[0].slice(7),data:JSON.parse(s.split(\"\\ndata: \")[1])}));",
+              "const progress=frames.filter(f=>f.name===\"progress\").map(f=>f.data);const terminal=frames.at(-1);",
+              "pm.test(\"ordered structured progress\",()=>{pm.expect(frames[0].name).to.eql(\"connected\");pm.expect(progress.length).to.be.above(0);progress.forEach((e,i)=>pm.expect(e.sequence).to.eql(i+1));const starts=new Map();for(const e of progress){if(!e.stepId)continue;if(e.status===\"started\"){pm.expect(starts.has(e.stepId)).to.eql(false);starts.set(e.stepId,e);}else{pm.expect(starts.has(e.stepId)).to.eql(true);pm.expect(e.durationMs).to.be.at.least(0);pm.expect(e.title).to.eql(starts.get(e.stepId).title);}}});",
+              "pm.test(\"confirmed report and matching snapshot\",()=>{pm.expect(terminal.name).to.eql(\"done\");pm.expect(terminal.data.status).to.eql(\"completed\");pm.expect(terminal.data.result).to.be.a(\"string\").and.not.empty;pm.expect(terminal.data.detail).to.deep.eql(progress);});",
+              "pm.test(\"actual tool output\",()=>{const e=progress.filter(e=>e.tool===\"query_prometheus_alerts\").at(-1);pm.expect(e.output.alerts).to.have.length(2);pm.expect(e.output.alerts[0].labels.instance).to.be.a(\"string\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select streaming empty",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"empty\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream empty",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"SSE response\",()=>{pm.response.to.have.status(200);pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/event-stream\");});",
+              "const frames=pm.response.text().split(\"\\n\\n\").filter(s=>s.startsWith(\"event: \")).map(s=>({name:s.split(\"\\n\")[0].slice(7),data:JSON.parse(s.split(\"\\ndata: \")[1])}));",
+              "const progress=frames.filter(f=>f.name===\"progress\").map(f=>f.data);const terminal=frames.at(-1);",
+              "pm.test(\"ordered structured progress\",()=>{pm.expect(frames[0].name).to.eql(\"connected\");pm.expect(progress.length).to.be.above(0);progress.forEach((e,i)=>pm.expect(e.sequence).to.eql(i+1));const starts=new Map();for(const e of progress){if(!e.stepId)continue;if(e.status===\"started\"){pm.expect(starts.has(e.stepId)).to.eql(false);starts.set(e.stepId,e);}else{pm.expect(starts.has(e.stepId)).to.eql(true);pm.expect(e.durationMs).to.be.at.least(0);pm.expect(e.title).to.eql(starts.get(e.stepId).title);}}});",
+              "pm.test(\"confirmed report and matching snapshot\",()=>{pm.expect(terminal.name).to.eql(\"done\");pm.expect(terminal.data.status).to.eql(\"completed\");pm.expect(terminal.data.result).to.be.a(\"string\").and.not.empty;pm.expect(terminal.data.detail).to.deep.eql(progress);});",
+              "pm.test(\"zero alerts is typed\",()=>{const e=progress.filter(e=>e.tool===\"query_prometheus_alerts\").at(-1);pm.expect(e.status).to.eql(\"completed\");pm.expect(e.count).to.eql(0);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select streaming limited",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"limited\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream limited",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"SSE response\",()=>{pm.response.to.have.status(200);pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/event-stream\");});",
+              "const frames=pm.response.text().split(\"\\n\\n\").filter(s=>s.startsWith(\"event: \")).map(s=>({name:s.split(\"\\n\")[0].slice(7),data:JSON.parse(s.split(\"\\ndata: \")[1])}));",
+              "const progress=frames.filter(f=>f.name===\"progress\").map(f=>f.data);const terminal=frames.at(-1);",
+              "pm.test(\"ordered structured progress\",()=>{pm.expect(frames[0].name).to.eql(\"connected\");pm.expect(progress.length).to.be.above(0);progress.forEach((e,i)=>pm.expect(e.sequence).to.eql(i+1));const starts=new Map();for(const e of progress){if(!e.stepId)continue;if(e.status===\"started\"){pm.expect(starts.has(e.stepId)).to.eql(false);starts.set(e.stepId,e);}else{pm.expect(starts.has(e.stepId)).to.eql(true);pm.expect(e.durationMs).to.be.at.least(0);pm.expect(e.title).to.eql(starts.get(e.stepId).title);}}});",
+              "pm.test(\"confirmed report and matching snapshot\",()=>{pm.expect(terminal.name).to.eql(\"done\");pm.expect(terminal.data.status).to.eql(\"completed\");pm.expect(terminal.data.result).to.be.a(\"string\").and.not.empty;pm.expect(terminal.data.detail).to.deep.eql(progress);});",
+              "pm.test(\"safe readable tool failure\",()=>{const e=progress.find(e=>e.tool===\"query_prometheus_alerts\"&&e.status===\"failed\");pm.expect(e.error.code).to.eql(\"authentication_failed\");pm.expect(e.error.message).to.include(\"认证失败\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select streaming failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"failure\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"SSE response\",()=>{pm.response.to.have.status(200);pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/event-stream\");});",
+              "const frames=pm.response.text().split(\"\\n\\n\").filter(s=>s.startsWith(\"event: \")).map(s=>({name:s.split(\"\\n\")[0].slice(7),data:JSON.parse(s.split(\"\\ndata: \")[1])}));",
+              "const progress=frames.filter(f=>f.name===\"progress\").map(f=>f.data);const terminal=frames.at(-1);",
+              "pm.test(\"ordered structured progress\",()=>{pm.expect(frames[0].name).to.eql(\"connected\");pm.expect(progress.length).to.be.above(0);progress.forEach((e,i)=>pm.expect(e.sequence).to.eql(i+1));const starts=new Map();for(const e of progress){if(!e.stepId)continue;if(e.status===\"started\"){pm.expect(starts.has(e.stepId)).to.eql(false);starts.set(e.stepId,e);}else{pm.expect(starts.has(e.stepId)).to.eql(true);pm.expect(e.durationMs).to.be.at.least(0);pm.expect(e.title).to.eql(starts.get(e.stepId).title);}}});",
+              "pm.test(\"typed SSE failure\",()=>{pm.expect(terminal.name).to.eql(\"error\");pm.expect(terminal.data.data.code).to.eql(\"execution_failed\");pm.expect(terminal.data.data.detail).to.deep.eql(progress);pm.expect(pm.response.text()).not.to.include(\"fixture-private-secret\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select streaming timeout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{helper_url}}/__test/ops-scenario",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"scenario\": \"timeout\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"scenario selected\",()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream timeout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/ai_ops_stream",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"SSE response\",()=>{pm.response.to.have.status(200);pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/event-stream\");});",
+              "const frames=pm.response.text().split(\"\\n\\n\").filter(s=>s.startsWith(\"event: \")).map(s=>({name:s.split(\"\\n\")[0].slice(7),data:JSON.parse(s.split(\"\\ndata: \")[1])}));",
+              "const progress=frames.filter(f=>f.name===\"progress\").map(f=>f.data);const terminal=frames.at(-1);",
+              "pm.test(\"ordered structured progress\",()=>{pm.expect(frames[0].name).to.eql(\"connected\");pm.expect(progress.length).to.be.above(0);progress.forEach((e,i)=>pm.expect(e.sequence).to.eql(i+1));const starts=new Map();for(const e of progress){if(!e.stepId)continue;if(e.status===\"started\"){pm.expect(starts.has(e.stepId)).to.eql(false);starts.set(e.stepId,e);}else{pm.expect(starts.has(e.stepId)).to.eql(true);pm.expect(e.durationMs).to.be.at.least(0);pm.expect(e.title).to.eql(starts.get(e.stepId).title);}}});",
+              "pm.test(\"typed SSE failure\",()=>{pm.expect(terminal.name).to.eql(\"error\");pm.expect(terminal.data.data.code).to.eql(\"timeout\");pm.expect(terminal.data.data.detail).to.deep.eql(progress);pm.expect(pm.response.text()).not.to.include(\"fixture-private-secret\");});"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "Reset normal",
       "request": {
         "method": "POST",

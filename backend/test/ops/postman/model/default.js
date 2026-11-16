@@ -53,5 +53,5 @@ http.createServer((req, res) => {
   const message=toolCall ? {role:'assistant',tool_calls:[toolCall]} : {role:'assistant',content};
   res.end(JSON.stringify({id:'ops-fixture',model:body.model,choices:[{index:0,message,finish_reason:toolCall?'tool_calls':'stop'}]}));
   };
-  if (scenario === 'slow' || scenario === 'timeout') { const timer=setTimeout(reply,10000);res.on('close',()=>clearTimeout(timer)); } else reply();
+  if (scenario === 'slow' || scenario === 'timeout') { const timer=setTimeout(reply,scenario === 'slow' ? 1200 : 10000);res.on('close',()=>clearTimeout(timer)); } else reply();
 }).listen(process.env.PORT);
