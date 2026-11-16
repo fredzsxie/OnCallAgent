@@ -23,8 +23,19 @@ assumptions:
     verification: Not established by the local simulation. Real Milvus 2.5.27 retrieval was evaluated separately on thirty synthetic labeled queries; production report evaluation still requires approved business documents and representative incidents.
     source: backend/test/knowledge/hybrid_integration_test.go; backend/test/knowledge/testdata/retrieval-corpus.json; docs/knowledge-acceptance.md
     updated_at: "2026-11-12"
+  - id: aiops-live-task-progress-20261116
+    status: supported
+    claim: Under the local normal, empty, limited, model-failure, timeout and slow scenarios, the real operations Agent and proxy deliver paired timed progress events before the final report or safe error.
+    reason: The final local acceptance suite passed all six scenarios; the Postman collection passed 40 assertions across 24 requests, and the browser displayed running steps, nested tool evidence, preserved expansion state and the final report layout.
+    verification: On 2026-11-16, used fingerprint aiops-live-progress-20261116. Successful runs exposed 13 progress events for 6 logical steps including 3 tools; the slow scenario completed in about 7.4 seconds after earlier progress had arrived. Browser checks covered cancellation followed by a new successful run, typed empty alerts, tool authentication failure, model failure, timeout, sanitized report markup, keyboard collapse and a 390px viewport without horizontal overflow. The local simulation request events confirmed calls reached the model and Prometheus members. This establishes behavior against these stand-ins, not production model reasoning or Milvus ranking.
+    source: backend/test/frontend/aiops-acceptance.test.mjs; backend/test/frontend/ops.collection.json; backend/test/frontend/aiops.acceptance.json; backend/test/ops/sse_test.go; docs/aiops-live-progress-acceptance.md; docs/images/aiops-live-progress-running.jpg
+    updated_at: "2026-11-16"
 fingerprints:
   - id: knowledge-workspace-20261112
     date: "2026-11-12"
     commit: "77ea182 with the pending acceptance helpers and corpus in the working tree"
+    cli: "1.74.0"
+  - id: aiops-live-progress-20261116
+    date: "2026-11-16"
+    commit: "bb76d85 with pending acceptance documentation; unrelated pre-existing CLI comments retained locally"
     cli: "1.74.0"

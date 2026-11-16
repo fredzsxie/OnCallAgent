@@ -50,6 +50,7 @@ tail -f log/oncall-*.log
 | `elapsed` | 当前事件所覆盖操作的耗时 |
 | `source_hash`、`session_hash` | 内部来源或会话的稳定摘要，便于关联而不输出存储路径 |
 | `agent`、`iteration`、`sequence`、`tool`、`count` | 运维步骤、工具及适用的结果数量 |
+| `step_id`、`duration_ms` | 关联步骤生命周期，以及服务端计算的终态耗时；不记录工具详情正文 |
 
 SSE 开始后的失败保留 `code=200`，通过 outcome/error_type 表明实际结果。API 错误响应和 CLI 错误 JSON 中的字符串 `code` 仍沿用原契约，与日志字段含义不同。
 
@@ -82,6 +83,7 @@ ONCALL_LOG_LEVEL=debug GOTOOLCHAIN=local go run .
 | SSE 末尾没有 done | 检查 error 事件、取消、代理断开或写出失败；不要将部分正文作为完成回答 |
 | 刷新后能看到记录，但模型不记得 | localStorage 是展示历史；后端 TTL、重启或多实例可能导致上下文失效 |
 | 上传 413/415/503 | 分别核对大小限制、文本格式、入库依赖；保存/入库阶段以 data.stage 区分 |
+| AI Ops 只有心跳、长时间没有新 progress | 心跳仅说明传输可写；结合当前阶段的模型耗时、总预算和请求日志判断任务状态 |
 | AI Ops 超时或证据受限 | 分别检查单次模型、工具和总预算；工具失败可继续，模型或总预算失败终止；无告警不等于健康 |
 | 路由表没有打印 | 确认日志级别允许 INFO、正在查看 Web stderr/文件，CLI 不注册 HTTP 路由 |
 

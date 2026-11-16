@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-16",
+  "implementationCommit": "bb76d85",
+  "postmanCli": "1.74.0",
+  "scope": "local Postman stand-ins; real GoFrame controllers, Agent graph and SDK clients; in-memory retrieval; no production dependencies",
+  "simulation": {
+    "requests": 181,
+    "byMember": {
+      "model": 157,
+      "prom": 24
+    },
+    "byStatus": {
+      "200": 169,
+      "401": 6,
+      "503": 6
+    },
+    "firstRequestAt": "2026-11-16T09:56:39.766Z",
+    "lastRequestAt": "2026-11-16T10:06:38.911Z"
+  },
+  "postman": {
+    "requests": 24,
+    "assertions": 40,
+    "failed": 0,
+    "exitCode": 0
+  },
+  "localAcceptance": {
+    "scenarios": [
+      "normal",
+      "empty",
+      "limited",
+      "failure",
+      "timeout",
+      "slow"
+    ],
+    "tests": 7,
+    "passed": 7,
+    "exitCode": 0
+  },
+  "frontendDefault": {
+    "tests": 32,
+    "passed": 30,
+    "skipped": 2,
+    "failed": 0
+  }
+}

@@ -16,7 +16,8 @@
 | POST | `/api/chat` | 普通对话 |
 | POST | `/api/chat_stream` | SSE 对话 |
 | POST | `/api/upload` | 文件保存并入库 |
-| POST | `/api/ai_ops` | 固定任务运维分析 |
+| POST | `/api/ai_ops` | 固定任务运维分析，完整 JSON 响应 |
+| POST | `/api/ai_ops_stream` | 固定任务运维分析，实时 SSE 进度 |
 | GET | `/api/knowledge/documents` | 分页文档目录 |
 | GET | `/api/knowledge/documents/{id}` | 文档正文与元数据 |
 | GET | `/api/knowledge/documents/{id}/chunks` | 当前版本切片 |
@@ -204,6 +205,53 @@ curl -i --max-time 210 http://127.0.0.1:6872/api/ai_ops \
 ```
 
 失败时可能包含已完成的部分 detail，不返回有效 result。这里的字符串 `data.code` 是 API 错误契约；它与应用日志中仅表示数值 HTTP 状态码的 `code` 不同。
+
+### 结构化步骤与工具结果
+
+`/api/ai_ops`、运维 SSE 和 CLI 共用扩展后的 Event。原字段保持，新增字段均可选；事件条数随实际生命周期变化，不应硬编码。
+
+| 字段 | 含义 |
+| --- | --- |
+| `stepId`、`parentStepId` | 本次运行内唯一的逻辑步骤 ID、所属步骤 ID；同一次调用的 started 与终态共享 ID |
+| `title` | 实际计划步骤或可读工具名称 |
+| `startedAt`、`finishedAt` | RFC3339Nano 起止时间，finishedAt 仅终态存在 |
+| `durationMs` | 服务端计算的非负毫秒耗时，终态允许为 0 |
+| `input` | 白名单调用参数，目前为手册工具的 query；无参数工具省略 |
+| `output` | 计划列表、工具证据或执行步骤的工具结果汇总 |
+| `error` | 安全错误的 code、中文 message、retryable；不会返回上游错误原文 |
+
+`status` 为 started、completed、failed 或 cancelled。Runner 的流程终止事件可不含 stepId；页面仅将具有步骤语义的事件合并成时间线。父步骤包含模型与工具等待时间，不能将父子耗时相加，也不能用相邻事件的时间差推算工具耗时。并行调用同名工具仍有不同 stepId。
+
+output 按工具提供：
+
+- 时间：timestamp、timezone、unix_seconds。
+- 告警：source、alerts，每条保留 labels、annotations、state、activeAt、value；不合并相同名称的不同实例。
+- 文档：query、mode、scoreType、documents，包含 title、source、sectionPath、version、score、scoreType、excerpt。得分保持原始评分语义，不是概率。
+- 规划：steps；执行完成：tools 汇总每次调用的工具、状态、摘要和适用的 count。
+
+每次结果最多附带 20 条明细，count 为截断前的完整数量，output.truncated 标明列表截断。每段 excerpt 最多 500 个字符（含省略号），文档自己的 truncated 标明片段截断。其他文本和标签集合也有长度边界，凭据字段隐藏，来源 URL 去除用户信息和查询串。证据以纯文本展示，不输出原始 JSON、模型内部消息或隐藏推理。
+
+### 运维实时进度
+
+请求仍为固定任务的 `{}`，使用 POST + fetch 流：
+
+```bash
+curl -N --max-time 210 http://127.0.0.1:6872/api/ai_ops_stream \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+参数或写入能力初始化错误在流开始前返回原 HTTP JSON 错误。成功建立流后返回 HTTP 200，响应头为 `Content-Type: text/event-stream; charset=utf-8`、`Cache-Control: no-cache`、`X-Accel-Buffering: no`。
+
+| 事件 | data |
+| --- | --- |
+| connected | `{"status":"connected"}`，在等待规划模型前发送 |
+| progress | 一条完整 Event，sequence 从 1 连续递增；按 stepId 合并开始和结束 |
+| done | `{"status":"completed","result":"五部分 Markdown 报告","detail":[...]}` |
+| error | `{"message":"安全错误","data":{"code":"timeout","detail":[...]}}` |
+
+流每 10 秒发送 `: heartbeat` 注释帧；它不是业务步骤，也不表示任务有新进展。进度事件实时发送，done.detail 是同一次运行已发送事件的最终快照。终态只有一个，之后不追加业务事件。
+
+只有收到有效 done 才确认成功。HTTP 200、部分 progress、异常 EOF 或网络断开都不代表分析完成；error 保留部分 detail，不返回有效报告。单工具失败可继续生成证据受限报告。取消或关闭页面会断开请求并取消上游；不自动重试，不支持断线续传、刷新恢复或后台执行。运维和聊天共享串行 SSE 写入器，单次写入最多等待 5 秒；传输损坏后不拼接错误帧。
 
 ## 知识库接口
 
