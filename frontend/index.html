@@ -74,7 +74,7 @@
             <label>标题<input id="kb-title-filter" type="search" maxlength="1024" placeholder="筛选文档标题"></label>
             <label>领域<input id="kb-domain" maxlength="256" placeholder="例如 cdn"></label><label>服务或模块<input id="kb-service" maxlength="256" placeholder="例如 edge"></label>
             <label>标签<input id="kb-tags" placeholder="多个标签用逗号分隔"></label><label>告警名<input id="kb-alert" maxlength="256" placeholder="告警标识"></label>
-            <button class="kb-button" type="submit">应用筛选</button><button id="kb-filter-reset" class="text-button" type="button">重置</button>
+            <div class="kb-filter-actions"><button class="send-button" type="submit">应用筛选</button><button id="kb-filter-reset" class="kb-button" type="button">重置</button></div>
           </form>
           <div class="kb-grid">
             <section class="kb-library" aria-label="文档目录"><div class="kb-section-heading"><h3>文档目录</h3><button id="kb-refresh" class="text-button" type="button">刷新</button></div><p id="kb-list-status" role="status"></p><div id="kb-list"></div><div class="kb-pagination"><button id="kb-prev" type="button">上一页</button><span id="kb-page"></span><button id="kb-next" type="button">下一页</button></div></section>
@@ -90,14 +90,8 @@
                 <label class="kb-query-field">检索内容<input id="kb-query" type="search" maxlength="4096" placeholder="输入术语、告警名或排查问题…" required autofocus></label>
                 <label>检索模式<select id="kb-mode"><option value="hybrid">混合检索</option><option value="dense">向量相似度</option><option value="bm25">BM25 关键词</option></select></label>
                 <label>TopK<input id="kb-top-k" type="number" min="1" max="100" value="10" required></label>
-
-                <div class="kb-search-filters" aria-label="检索筛选条件">
-                  <label>知识类型<select id="kb-search-type"><option value="">全部类型</option><option value="glossary">专业术语</option><option value="sop">告警 SOP</option><option value="reference">参考资料</option></select></label>
-                  <label>领域<input id="kb-search-domain" maxlength="256" placeholder="例如 cdn"></label>
-                  <label>服务或模块<input id="kb-search-service" maxlength="256" placeholder="例如 edge"></label>
-                  <label>标签<input id="kb-search-tags" placeholder="多个标签用逗号分隔"></label>
-                  <label>告警名<input id="kb-search-alert" maxlength="256" placeholder="告警标识"></label>
-                </div>
+                <label>知识类型<select id="kb-search-type"><option value="">全部类型</option><option value="glossary">专业术语</option><option value="sop">告警 SOP</option><option value="reference">参考资料</option></select></label>
+                <label>标签<input id="kb-search-tags" placeholder="多个标签用逗号分隔"></label>
               </form>
 
               <div id="kb-search-empty" class="kb-search-empty"><strong>查找需要的知识片段</strong><p>输入术语、告警名或排查问题，检索结果将在此显示。</p></div>

@@ -8,8 +8,9 @@ export function initKnowledgeView({uploadMaxBytes = 10485760, onBusy = () => {}}
   let page = 1, selected = null, chunkPage = 1, citation = null, writeTarget = null;
   const filters = () => ({docType: $('kb-type').value, domain: $('kb-domain').value.trim(), service: $('kb-service').value.trim(),
     tags: $('kb-tags').value.split(/[,，]/).map(v => v.trim()).filter(Boolean), alertName: $('kb-alert').value.trim()});
-  const searchFilters = () => ({docType: $('kb-search-type').value, domain: $('kb-search-domain').value.trim(), service: $('kb-search-service').value.trim(),
-    tags: $('kb-search-tags').value.split(/[,，]/).map(v => v.trim()).filter(Boolean), alertName: $('kb-search-alert').value.trim()});
+  // Modal filters are independent of the directory and include only the visible controls.
+  const searchFilters = () => ({docType: $('kb-search-type').value,
+    tags: $('kb-search-tags').value.split(/[,，]/).map(v => v.trim()).filter(Boolean)});
   const message = (node, task, empty) => {
     node.textContent = task.status === 'loading' ? '正在加载…' : ['failed', 'cancelled'].includes(task.status) ? task.error : empty;
     node.classList.toggle('error', task.status === 'failed');
