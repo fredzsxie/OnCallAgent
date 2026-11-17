@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -15,8 +16,6 @@ import (
 	"unicode"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	"github.com/gogf/gf/v2/os/glog"
-	"github.com/gogf/gf/v2/util/guid"
 	"github.com/mattn/go-isatty"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -37,18 +36,22 @@ type Options struct {
 }
 
 type Logger struct {
-	base *glog.Logger
-	sink *sink
+	minimum level
+	sink    *sink
+	color   bool
 }
+type level uint8
+
+const (
+	debugLevel level = iota
+	infoLevel
+	warnLevel
+	errorLevel
+)
+
 type contextKey struct{}
 type correlationKey struct{}
 type correlation struct{ kind, id string }
-type record struct {
-	component, message string
-	caller             string
-	fields             []Field
-	table              string
-}
 
 func New(cfg config.Logging, options Options) (*Logger, error) {
 	if err := cfg.Validate(); err != nil {
@@ -62,40 +65,8 @@ func New(cfg config.Logging, options Options) (*Logger, error) {
 		_ = s.Close()
 		return nil, errors.New("cannot initialize log files; check log directory permissions")
 	}
-	base := glog.New()
-	c := glog.DefaultConfig()
-	c.StdoutPrint, c.HeaderPrint, c.StStatus = false, false, 0
-	c.Handlers = []glog.Handler{func(ctx context.Context, in *glog.HandlerInput) {
-		if len(in.Values) != 1 {
-			return
-		}
-		r, ok := in.Values[0].(record)
-		if !ok {
-			return
-		}
-		level := map[int]string{glog.LEVEL_DEBU: "DEBUG", glog.LEVEL_INFO: "INFO", glog.LEVEL_WARN: "WARN", glog.LEVEL_ERRO: "ERROR"}[in.Level]
-		var fields []Field
-		if id, ok := ctx.Value(correlationKey{}).(correlation); ok {
-			fields = append(fields, F(id.kind, id.id))
-		}
-		if span := trace.SpanContextFromContext(ctx); span.IsValid() {
-			fields = append(fields, F("trace", span.TraceID().String()))
-		}
-		fields = append(fields, r.fields...)
-		line := format(options.Now(), level, r.component, r.caller, r.message, fields)
-		if r.table != "" {
-			line += "\n" + strings.TrimRight(r.table, "\n") + "\n"
-		}
-		// One record is written under one lock, including its terminal and file copies.
-		s.write(line, level, options.Color)
-	}}
-	if err := base.SetConfig(c); err != nil {
-		s.Close()
-		return nil, errors.New("cannot initialize logger")
-	}
-	levels := map[string]int{"debug": glog.LEVEL_DEBU | glog.LEVEL_INFO | glog.LEVEL_WARN | glog.LEVEL_ERRO, "info": glog.LEVEL_INFO | glog.LEVEL_WARN | glog.LEVEL_ERRO, "warn": glog.LEVEL_WARN | glog.LEVEL_ERRO, "error": glog.LEVEL_ERRO}
-	base.SetLevel(levels[cfg.Level])
-	return &Logger{base, s}, nil
+	levels := map[string]level{"debug": debugLevel, "info": infoLevel, "warn": warnLevel, "error": errorLevel}
+	return &Logger{minimum: levels[cfg.Level], sink: s, color: options.Color}, nil
 }
 
 func (l *Logger) Close() error { return l.sink.Close() }
@@ -108,11 +79,41 @@ func Inherit(ctx, parent context.Context) context.Context {
 	}
 	return ctx
 }
-func WithRequest(ctx context.Context) (context.Context, string) { return withID(ctx, "req") }
-func WithRun(ctx context.Context) (context.Context, string)     { return withID(ctx, "run") }
-func withID(ctx context.Context, kind string) (context.Context, string) {
-	id := guid.S()
+
+// WithRequest preserves a safe incoming ID so every request boundary shares one ID.
+func WithRequest(ctx context.Context, incoming ...string) (context.Context, string) {
+	if len(incoming) > 0 && validRequestID(incoming[0]) {
+		return withID(ctx, "rid", incoming[0])
+	}
+	return withID(ctx, "rid", newID())
+}
+
+func WithRun(ctx context.Context) (context.Context, string) { return withID(ctx, "run", newID()) }
+
+func withID(ctx context.Context, kind, id string) (context.Context, string) {
 	return context.WithValue(ctx, correlationKey{}, correlation{kind, id}), id
+}
+
+func validRequestID(id string) bool {
+	if len(id) == 0 || len(id) > 128 {
+		return false
+	}
+	for _, c := range id {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._:-", c)) {
+			return false
+		}
+	}
+	return true
+}
+
+func newID() string {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		panic("cannot generate correlation ID")
+	}
+	id[6] = id[6]&0x0f | 0x40
+	id[8] = id[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:])
 }
 
 func Bootstrap(ctx context.Context, web bool) (context.Context, *Logger, error) {
@@ -136,36 +137,40 @@ func Bootstrap(ctx context.Context, web bool) (context.Context, *Logger, error) 
 }
 
 func Debug(ctx context.Context, component, message string, fields ...Field) {
-	emit(ctx, glog.LEVEL_DEBU, component, message, fields)
+	emit(ctx, debugLevel, component, message, fields, "")
 }
 func Info(ctx context.Context, component, message string, fields ...Field) {
-	emit(ctx, glog.LEVEL_INFO, component, message, fields)
+	emit(ctx, infoLevel, component, message, fields, "")
 }
 func Warn(ctx context.Context, component, message string, fields ...Field) {
-	emit(ctx, glog.LEVEL_WARN, component, message, fields)
+	emit(ctx, warnLevel, component, message, fields, "")
 }
 func Error(ctx context.Context, component, message string, fields ...Field) {
-	emit(ctx, glog.LEVEL_ERRO, component, message, fields)
+	emit(ctx, errorLevel, component, message, fields, "")
 }
-func emit(ctx context.Context, level int, component, message string, fields []Field) {
+func emit(ctx context.Context, severity level, component, message string, fields []Field, table string) {
 	if ctx == nil {
 		return
 	}
 	l, _ := ctx.Value(contextKey{}).(*Logger)
-	if l == nil || l.base.GetLevel()&level == 0 {
+	if l == nil || severity < l.minimum {
 		return
 	}
-	r := record{component: component, message: message, caller: caller(), fields: fields}
-	switch level {
-	case glog.LEVEL_DEBU:
-		l.base.Debug(ctx, r)
-	case glog.LEVEL_INFO:
-		l.base.Info(ctx, r)
-	case glog.LEVEL_WARN:
-		l.base.Warning(ctx, r)
-	case glog.LEVEL_ERRO:
-		l.base.Error(ctx, r)
+	var contextFields []Field
+	if id, ok := ctx.Value(correlationKey{}).(correlation); ok {
+		contextFields = append(contextFields, F(id.kind, id.id))
 	}
+	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
+		contextFields = append(contextFields, F("trace", span.TraceID().String()))
+	}
+	fields = append(contextFields, fields...)
+	label := [...]string{"DEBU", "INFO", "WARN", "ERRO"}[severity]
+	line := format(l.sink.now(), label, component, caller(), message, fields)
+	if table != "" {
+		line += "\n" + strings.TrimRight(table, "\n") + "\n"
+	}
+	// The sink writes each complete record and both output copies under one lock.
+	l.sink.write(line, label, l.color)
 }
 
 // Only startup route metadata uses a multiline block; request records stay single-line.
@@ -173,9 +178,7 @@ func RouterTable(ctx context.Context, table string, count int) {
 	if ctx == nil || table == "" {
 		return
 	}
-	if l, ok := ctx.Value(contextKey{}).(*Logger); ok && l != nil && l.base.GetLevel()&glog.LEVEL_INFO != 0 {
-		l.base.Info(ctx, record{component: "Router", message: "已注册 API 路由", caller: caller(), fields: []Field{F("count", count)}, table: table})
-	}
+	emit(ctx, infoLevel, "Router", "已注册 API 路由", []Field{F("count", count)}, table)
 }
 
 func Digest(value string) string {
@@ -257,8 +260,7 @@ func Finish(ctx context.Context, component, message string, started time.Time, e
 
 func format(now time.Time, level, component, position, message string, fields []Field) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %-5s [%s](%s) --> %s", now.Format("2006-01-02 15:04:05.000 -07:00"), level, escape(component), escape(position), escape(message))
-	first := true
+	fmt.Fprintf(&b, "%s [%s] %s -> [%s] %s", now.Format("2006-01-02 15:04:05.000"), level, escape(position), escape(component), escape(message))
 	for _, f := range fields {
 		if f.Key == "" || strings.IndexFunc(f.Key, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' }) >= 0 {
 			continue
@@ -267,15 +269,11 @@ func format(now time.Time, level, component, position, message string, fields []
 		if value == "" {
 			continue
 		}
-		if first {
-			b.WriteString(" | ")
-			first = false
-		} else {
-			b.WriteByte(' ')
-		}
+		b.WriteByte(' ')
 		b.WriteString(f.Key)
-		b.WriteByte('=')
-		b.WriteString(value)
+		b.WriteByte('[')
+		b.WriteString(escape(value))
+		b.WriteByte(']')
 	}
 	b.WriteByte('\n')
 	return b.String()
@@ -284,14 +282,6 @@ func format(now time.Time, level, component, position, message string, fields []
 func scalar(value any) string {
 	switch v := value.(type) {
 	case string:
-		if v == "" {
-			return ""
-		}
-		if strings.IndexFunc(v, func(r rune) bool {
-			return unicode.IsSpace(r) || unicode.IsControl(r) || r == '"' || r == '\\' || r == '=' || r == '|'
-		}) >= 0 {
-			return strconv.QuoteToGraphic(v)
-		}
 		return v
 	case time.Duration:
 		if v < time.Second {
@@ -311,7 +301,23 @@ func scalar(value any) string {
 	}
 }
 
+// Escape field delimiters and control characters so one event stays on one physical line.
 func escape(value string) string {
-	quoted := strconv.QuoteToGraphic(value)
-	return quoted[1 : len(quoted)-1]
+	var b strings.Builder
+	for _, r := range value {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case ']':
+			b.WriteString(`\]`)
+		default:
+			if unicode.IsControl(r) || !unicode.IsPrint(r) {
+				quoted := strconv.QuoteRuneToGraphic(r)
+				b.WriteString(quoted[1 : len(quoted)-1])
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	return b.String()
 }

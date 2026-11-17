@@ -79,14 +79,14 @@ func (s *sink) write(line, level string, color bool) {
 		if err != nil && !s.warned {
 			s.warned = true
 			if s.console != nil {
-				_, _ = io.WriteString(s.console, format(s.now(), "ERROR", "Logger", caller(), "日志文件写入失败，请检查磁盘与权限", []Field{F("error_type", "log_write_failed")}))
+				_, _ = io.WriteString(s.console, format(s.now(), "ERRO", "Logger", caller(), "日志文件写入失败，请检查磁盘与权限", []Field{F("error_type", "log_write_failed")}))
 			}
 		}
 	}
 	if s.console != nil {
 		if color {
-			colors := map[string]string{"DEBUG": "36", "INFO": "32", "WARN": "33", "ERROR": "31"}
-			line = strings.Replace(line, " "+level, " \x1b["+colors[level]+"m"+level+"\x1b[0m", 1)
+			colors := map[string]string{"DEBU": "36", "INFO": "32", "WARN": "33", "ERRO": "31"}
+			line = strings.Replace(line, "["+level+"]", "\x1b["+colors[level]+"m["+level+"]\x1b[0m", 1)
 		}
 		_, _ = io.WriteString(s.console, line)
 	}

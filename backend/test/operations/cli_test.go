@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-
 )
 
 var toolBinary string
@@ -171,12 +169,12 @@ func TestCLILogsUseRunIDsAndKeepJSONStreams(t *testing.T) {
 	runs := map[string]bool{}
 	for _, line := range strings.Split(string(content), "\n") {
 		for _, field := range strings.Fields(line) {
-			if strings.HasPrefix(field, "run=") {
+			if strings.HasPrefix(field, "run[") {
 				runs[field] = true
 			}
 		}
 	}
-	if len(runs) != 2 || !strings.Contains(string(content), "tool=get_current_time") || strings.Contains(string(content), "\x1b") {
+	if len(runs) != 2 || !strings.Contains(string(content), "tool[get_current_time]") || strings.Contains(string(content), "\x1b") {
 		t.Fatal("run correlation or formatting", string(content))
 	}
 }

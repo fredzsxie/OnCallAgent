@@ -64,12 +64,12 @@ func TestStartupRouteTablePreservesAPIInformation(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{"已注册 API 路由", "count=6", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE", "POST", "GET", "/api/ai_ops", "/api/ai_ops_stream", "/api/chat", "/api/chat_stream", "/api/health", "/api/upload", "ResponseMiddleware", "UploadBody", "AIOpsController", "ControllerV1"} {
+			for _, want := range []string{"已注册 API 路由", "count[6]", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE", "POST", "GET", "/api/ai_ops", "/api/ai_ops_stream", "/api/chat", "/api/chat_stream", "/api/health", "/api/upload", "ResponseMiddleware", "UploadBody", "AIOpsController", "ControllerV1"} {
 				if !strings.Contains(output, want) {
 					t.Fatalf("missing %q in %s", want, output)
 				}
 			}
-			if strings.Count(output, "(utility/middleware/routes.go:") != 1 {
+			if strings.Count(output, "utility/middleware/routes.go:") != 1 {
 				t.Fatal("route caller must appear only on table heading", output)
 			}
 			for _, skip := range []string{"HookBeforeServe", "HookAfterOutput", "ObserveHTTP", "/*"} {

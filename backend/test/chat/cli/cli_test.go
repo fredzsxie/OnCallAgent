@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -310,7 +309,7 @@ func TestCLILogsCurrentInputWithoutHistoryOrAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := string(data)
-	if strings.Count(logs, "用户请求") != 1 || !strings.Contains(logs, "Id="+strconv.QuoteToGraphic(" cli-session ")) || strings.Count(logs, "Question="+strconv.QuoteToGraphic(query)) != 1 {
+	if strings.Count(logs, "用户请求") != 1 || !strings.Contains(logs, "Id[ cli-session ]") || strings.Count(logs, `Question[  中文问题\n"quoted"\\path\t  ]`) != 1 {
 		t.Fatal("current input missing or duplicated", logs)
 	}
 	for _, secret := range []string{"private-history", "fixture-only", "Refresh keys", "auth.md"} {

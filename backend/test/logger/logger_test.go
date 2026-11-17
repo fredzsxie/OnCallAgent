@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -59,12 +60,12 @@ func TestReadableFormatColorAndFileRetention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"2026-10-21 14:30:00.125 +08:00 INFO", fmt.Sprintf("[HTTP](test/logger/logger_test.go:%d) --> 请求完成", line+1), "req=" + id, "code=200", "elapsed=2.13s"} {
+	for _, want := range []string{"2026-10-21 14:30:00.125 [INFO]", fmt.Sprintf("test/logger/logger_test.go:%d -> [HTTP] 请求完成", line+1), "rid[" + id + "]", "code[200]", "elapsed[2.13s]"} {
 		if !strings.Contains(string(file), want) {
 			t.Fatalf("missing %q in %s", want, file)
 		}
 	}
-	if !strings.Contains(console.String(), "\x1b[32mINFO") || strings.Contains(string(file), "\x1b") || strings.Contains(string(file), "empty=") || strings.Contains(string(file), "bad") {
+	if !strings.Contains(console.String(), "\x1b[32m[INFO]") || strings.Contains(string(file), "\x1b") || strings.Contains(string(file), "empty[") || strings.Contains(string(file), "bad") {
 		t.Fatalf("bad output %q %s", console.String(), file)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "oncall-2026-10-14.log")); !errors.Is(err, os.ErrNotExist) {
@@ -97,13 +98,39 @@ func TestLevelEscapingAndSafeErrors(t *testing.T) {
 	logger.Info(ctx, "HTTP", "不得出现")
 	logger.Failure(ctx, "Model", "模型失败", errors.New("private-key https://user:password@host/?secret=abc"), logger.F("stage", "query\nforged\x1b[31m"), logger.F("raw_error", errors.New("secret")))
 	logger.Failure(ctx, "SSE", "请求取消", context.Canceled)
-	if strings.Count(out.String(), "\n") != 2 || strings.Contains(out.String(), "不得出现") || strings.Contains(out.String(), "private-key") || strings.Contains(out.String(), "raw_error=") || strings.Contains(out.String(), "password") || strings.Contains(out.String(), "\x1b") {
+	if strings.Count(out.String(), "\n") != 2 || strings.Contains(out.String(), "不得出现") || strings.Contains(out.String(), "private-key") || strings.Contains(out.String(), "raw_error[") || strings.Contains(out.String(), "password") || strings.Contains(out.String(), "\x1b") {
 		t.Fatal("unsafe log", out.String())
 	}
-	for _, want := range []string{`\nforged\x1b[31m`, `error_type=execution_failed`, `WARN`, `error_type=cancelled`} {
+	for _, want := range []string{`\nforged\x1b[31m`, `error_type[execution_failed]`, `[WARN]`, `error_type[cancelled]`} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatal("missing", want, out.String())
 		}
+	}
+}
+
+func TestRequestIDInheritanceAndValidation(t *testing.T) {
+	uuid := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	for _, incoming := range []string{"edge.Request_1:retry-2", strings.Repeat("a", 128), "", strings.Repeat("a", 129), "bad id", "bad\tid", "bad\nid", "bad]id", "请求"} {
+		var out bytes.Buffer
+		root, _ := testLogger(t, settings(), logger.Options{Console: &out})
+		ctx, id := logger.WithRequest(root, incoming)
+		valid := incoming == "edge.Request_1:retry-2" || incoming == strings.Repeat("a", 128)
+		if valid && id != incoming || !valid && !uuid.MatchString(id) {
+			t.Fatalf("unexpected request ID for %q: %q", incoming, id)
+		}
+		logger.Info(ctx, "HTTP", "请求完成")
+		if !strings.Contains(out.String(), "rid["+id+"]") || strings.Count(out.String(), "\n") != 1 {
+			t.Fatal("request correlation missing or unsafe", out.String())
+		}
+	}
+}
+
+func TestFieldDelimitersAndControlsAreEscaped(t *testing.T) {
+	var out bytes.Buffer
+	ctx, _ := testLogger(t, settings(), logger.Options{Console: &out})
+	logger.Debug(ctx, "Test", "字段转义", logger.F("value", "left] right\\path\n\r\t\x00\x1b\"quoted\""))
+	if !strings.Contains(out.String(), `[DEBU]`) || !strings.Contains(out.String(), `value[left\] right\\path\n\r\t\x00\x1b"quoted"]`) || strings.Count(out.String(), "\n") != 1 {
+		t.Fatal("field value broke the record", out.String())
 	}
 }
 
@@ -131,9 +158,9 @@ func TestConcurrentContextIsolation(t *testing.T) {
 	for i, id := range ids {
 		n := 0
 		for _, line := range lines {
-			if strings.Contains(line, "req="+id) {
+			if strings.Contains(line, "rid["+id+"]") {
 				n++
-				if !strings.HasSuffix(line, fmt.Sprintf("index=%d", i)) {
+				if !strings.HasSuffix(line, fmt.Sprintf("index[%d]", i)) {
 					t.Fatal("mixed context", line)
 				}
 			}

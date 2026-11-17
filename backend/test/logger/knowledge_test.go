@@ -36,7 +36,7 @@ func TestKnowledgeGraphStagesAndSafeFailure(t *testing.T) {
 				}
 			}
 			if fail {
-				if !strings.Contains(lines, "stage=ingest") || !strings.Contains(lines, "文件处理失败") {
+				if !strings.Contains(lines, "stage[ingest]") || !strings.Contains(lines, "文件处理失败") {
 					t.Fatal(lines)
 				}
 			} else {

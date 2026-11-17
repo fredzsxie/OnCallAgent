@@ -308,7 +308,7 @@ func TestUploadLogsOriginalFileMetadataOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if strings.Count(text, "用户上传") != 1 || !strings.Contains(text, `file_name="运维 手册.md" size=27 format=.md`) {
+	if strings.Count(text, "用户上传") != 1 || !strings.Contains(text, `file_name[运维 手册.md] size[27] format[.md]`) {
 		t.Fatal("missing upload metadata", text)
 	}
 	if strings.Contains(text, content) || strings.Contains(text, cfg.FileDir) {
