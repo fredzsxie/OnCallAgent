@@ -1,18 +1,15 @@
 package middleware
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
+
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 )
 
-const payloadLimit = 8 << 10
+const payloadLimit = logger.PreviewLimit
 
 // responseCapture counts successful writes and retains only a bounded JSON copy.
 type responseCapture struct {
@@ -97,67 +94,5 @@ func (p *responseCapture) preview(contentType string, complete bool) string {
 	if !complete || p.size != int64(len(p.data)) {
 		return "<incomplete>"
 	}
-	if p.size == 0 {
-		return "<empty>"
-	}
-	if !utf8.Valid(p.data) {
-		return "<invalid>"
-	}
-	decoder := json.NewDecoder(bytes.NewReader(p.data))
-	decoder.UseNumber()
-	var value any
-	if decoder.Decode(&value) != nil || decoder.Decode(new(any)) != io.EOF {
-		return "<invalid>"
-	}
-	redactPayload(value)
-	data, err := json.Marshal(value)
-	if err != nil || len(data) > payloadLimit || escapedPayloadSize(data) > payloadLimit {
-		return "<truncated>"
-	}
-	return string(data)
-}
-
-func redactPayload(value any) {
-	switch v := value.(type) {
-	case map[string]any:
-		for key, item := range v {
-			normalized := strings.ToLower(strings.NewReplacer("-", "", "_", "").Replace(key))
-			sensitive := false
-			for _, name := range []string{"authorization", "cookie", "password", "passwd", "secret", "token", "apikey", "credential", "privatekey", "accesskey"} {
-				if strings.Contains(normalized, name) {
-					sensitive = true
-					break
-				}
-			}
-			if sensitive {
-				v[key] = "[REDACTED]"
-			} else {
-				redactPayload(item)
-			}
-		}
-	case []any:
-		for _, item := range v {
-			redactPayload(item)
-		}
-	}
-}
-
-// Bound the rendered field as well; logger escaping can expand Unicode and brackets.
-// Returning a marker instead of slicing keeps both JSON and UTF-8 complete.
-func escapedPayloadSize(data []byte) int {
-	size := 0
-	for _, r := range string(data) {
-		switch {
-		case r == '\\' || r == ']':
-			size += 2
-		case unicode.IsControl(r) || !unicode.IsPrint(r):
-			size += len(strconv.QuoteRuneToGraphic(r)) - 2
-		default:
-			size += utf8.RuneLen(r)
-		}
-		if size > payloadLimit {
-			break
-		}
-	}
-	return size
+	return logger.JSONPreview(p.data)
 }

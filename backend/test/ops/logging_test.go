@@ -38,10 +38,27 @@ func TestOpsLogsSummariesWithoutPlanOrReportContents(t *testing.T) {
 					t.Fatal("missing event", want, out.String())
 				}
 			}
-			for _, secret := range []string{"Inspect alerts and evidence", "auth.md", "HighCPU on node-a", "fixture-private", "stale key cache"} {
-				if strings.Contains(out.String(), secret) {
-					t.Fatal("plan/report leaked", secret)
+			var business, toolLog strings.Builder
+			for _, line := range strings.Split(out.String(), "\n") {
+				if strings.Contains(line, " -> [Ops] ") {
+					business.WriteString(line)
 				}
+				if strings.Contains(line, " -> [Tool] ") {
+					toolLog.WriteString(line)
+				}
+			}
+			for _, content := range []string{"Inspect alerts and evidence", "auth.md", "HighCPU on node-a", "stale key cache"} {
+				if strings.Contains(business.String(), content) {
+					t.Fatal("business logs repeated plan/report contents", content)
+				}
+			}
+			for _, content := range []string{`req[{"query":"HighCPU node-a"}]`, "Refresh signing keys.", "auth.md", " rsp["} {
+				if !strings.Contains(toolLog.String(), content) {
+					t.Fatal("tool boundary omitted actual input/result", content, toolLog.String())
+				}
+			}
+			if strings.Contains(out.String(), "fixture-private") {
+				t.Fatal("raw dependency error leaked", out.String())
 			}
 		})
 	}
@@ -80,7 +97,13 @@ func TestOpsHTTPLogsFixedEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if strings.Count(text, "req[{}]") != 1 || strings.Count(text, "query["+aiops.DefaultQuery+"]") != 1 || strings.Contains(text, "private-invalid-body") || !strings.Contains(text, "REDACTED") || strings.Contains(text, "用户请求") {
+	var httpLog strings.Builder
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, " -> [HTTP] ") {
+			httpLog.WriteString(line)
+		}
+	}
+	if strings.Count(httpLog.String(), " req[{}]") != 1 || strings.Count(text, "query["+aiops.DefaultQuery+"]") != 1 || strings.Contains(text, "private-invalid-body") || !strings.Contains(httpLog.String(), "REDACTED") || strings.Contains(text, "用户请求") {
 		t.Fatal("invalid or duplicate request content", text)
 	}
 }

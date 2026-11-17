@@ -222,7 +222,7 @@ func exerciseHTTP(t *testing.T, base string) {
 			t.Fatal("missing business caller", position, lines)
 		}
 	}
-	for _, secret := range []string{"private-document-body", "private-source.md", "private-api-key", "private-provider-error", "fixture-private-error", "private-path-secret", "private-query-key", "Authorization", "<documents>", "http://"} {
+	for _, secret := range []string{"private-api-key", "private-provider-error", "fixture-private-error", "private-path-secret", "private-query-key", "private-bearer", "private-user", "private-password"} {
 		if strings.Contains(logs.String(), secret) {
 			t.Fatal("sensitive content in logs", secret)
 		}
@@ -387,9 +387,11 @@ func TestHTTPConcurrentIDsAndCancellation(t *testing.T) {
 	}
 }
 
-func TestToolsSharedWrapperLogsNamesWithoutContents(t *testing.T) {
+func TestToolsSharedWrapperLogsActualInputsAndResultsAtBoundary(t *testing.T) {
 	var out capture
-	ctx, _ := testLogger(t, settings(), logger.Options{Console: &out})
+	cfg := settings()
+	cfg.Level = "info"
+	ctx, _ := testLogger(t, cfg, logger.Options{Console: &out})
 	ctx, id := logger.WithRequest(ctx)
 	recall, _ := retriever.NewMilvusRetriever(memoryRetriever{}, config.Retrieval{TopK: 3, ScoreThreshold: .5})
 	registry, err := tools.NewRegistry(config.Tools{GetCurrentTimeEnabled: true, QueryInternalDocsEnabled: true, TimeZone: "Asia/Shanghai"}, tools.Dependencies{Retriever: recall})
@@ -409,9 +411,16 @@ func TestToolsSharedWrapperLogsNamesWithoutContents(t *testing.T) {
 	if !strings.Contains(out.String(), "rid["+id+"]") || !strings.Contains(out.String(), "tool[query_internal_docs]") || !strings.Contains(out.String(), "tool[get_current_time]") || !strings.Contains(out.String(), "count[1]") || !strings.Contains(out.String(), "output_bytes[") || !strings.Contains(out.String(), "timestamp[") || !strings.Contains(out.String(), "timezone[Asia/Shanghai]") {
 		t.Fatal(out.String())
 	}
-	for _, secret := range []string{"private-tool-query", "private-document-body", "private-source.md"} {
-		if strings.Contains(out.String(), secret) {
-			t.Fatal("tool contents leaked")
+	for _, content := range []string{`req[{"query":"private-tool-query"}]`, "private-document-body", "private-source.md", " rsp["} {
+		if !strings.Contains(out.String(), content) {
+			t.Fatal("tool boundary omitted actual input/result", content, out.String())
+		}
+	}
+	for _, line := range strings.Split(out.String(), "\n") {
+		for _, content := range []string{"private-tool-query", "private-document-body", "private-source.md"} {
+			if strings.Contains(line, content) && !strings.Contains(line, " -> [Tool] ") {
+				t.Fatal("tool contents repeated outside their boundary", line)
+			}
 		}
 	}
 }
