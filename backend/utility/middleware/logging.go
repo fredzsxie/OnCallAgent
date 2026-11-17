@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -21,10 +22,46 @@ type requestLog struct {
 type responseWriter struct {
 	gin.ResponseWriter
 	transport http.ResponseWriter
+	ctx       context.Context
+	capture   responseCapture
+	failed    bool
+	multipart bool
 }
 
 func (w *responseWriter) Unwrap() http.ResponseWriter          { return w.ResponseWriter }
 func (w *responseWriter) TransportWriter() http.ResponseWriter { return w.transport }
+
+func (w *responseWriter) contentType() string {
+	if w.multipart {
+		return "multipart/form-data"
+	}
+	return w.Header().Get("Content-Type")
+}
+
+func (w *responseWriter) Write(data []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(data)
+	// Capture only bytes accepted by the transport, never a rejected response suffix.
+	w.capture.write(data[:n], w.contentType())
+	w.observeWrite(n, len(data), err)
+	return n, err
+}
+
+func (w *responseWriter) WriteString(data string) (int, error) {
+	n, err := w.ResponseWriter.WriteString(data)
+	w.capture.writeString(data[:n], w.contentType())
+	w.observeWrite(n, len(data), err)
+	return n, err
+}
+
+func (w *responseWriter) observeWrite(n, size int, err error) {
+	if err == nil && n != size {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		w.failed = true
+		SetExecutionError(w.ctx, err)
+	}
+}
 
 // ObserveHTTP includes unmatched routes and records one terminal result after recovery.
 func ObserveHTTP(root context.Context) gin.HandlerFunc {
@@ -33,11 +70,14 @@ func ObserveHTTP(root context.Context) gin.HandlerFunc {
 		ctx, id := logger.WithRequest(logger.Inherit(c.Request.Context(), root), c.GetHeader("X-Request-ID"))
 		obs := &requestLog{}
 		c.Request = c.Request.WithContext(context.WithValue(ctx, observationKey{}, obs))
+		request := newRequestCapture(c.Request)
+		c.Request.Body = request
 		c.Request.Header.Set("X-Request-ID", id)
 		c.Header("X-Request-ID", id)
 		// Only unwrap the framework layer; custom transport wrappers own their error semantics.
 		base := c.Writer.(interface{ Unwrap() http.ResponseWriter }).Unwrap()
-		c.Writer = &responseWriter{ResponseWriter: c.Writer, transport: base}
+		response := &responseWriter{ResponseWriter: c.Writer, transport: base, ctx: c.Request.Context(), multipart: payloadType(c.GetHeader("Content-Type")) == "multipart"}
+		c.Writer = response
 		route := c.FullPath()
 		if route == "" {
 			route = "<unmatched>"
@@ -65,6 +105,7 @@ func ObserveHTTP(root context.Context) gin.HandlerFunc {
 				errorType, outcome = "http_error", "failed"
 			}
 			fields := []logger.Field{logger.F("method", c.Request.Method), logger.F("route", route), logger.F("code", status), logger.F("elapsed", time.Since(started)), logger.F("outcome", outcome), logger.F("error_type", errorType)}
+			fields = append(fields, logger.F("req", request.preview()), logger.F("rsp", response.capture.preview(response.contentType(), !response.failed)), logger.F("req_bytes", request.size), logger.F("rsp_bytes", response.capture.size))
 			message := "请求完成"
 			if outcome != "success" {
 				message, log = "请求未完成", logger.Error

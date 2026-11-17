@@ -7,10 +7,10 @@
 日志由项目独立实现，使用标准库格式化与文件输出，统一为易读文本。正文按“毫秒时间、四字符级别、代码位置、组件、事件、字段”排列，位置相对 `backend/`。以下行号和请求 ID 为示意：
 
 ```text
-2026-01-01 08:00:00.125 [INFO] utility/middleware/logging.go:52 -> [HTTP] 请求开始 rid[example-request] method[POST] route[/api/chat]
-2026-01-01 08:00:00.130 [INFO] internal/controller/chat/chat_v1_chat.go:20 -> [Chat] 用户请求 rid[example-request] Id[demo] Question[第一行\n第二行]
-2026-01-01 08:00:02.255 [INFO] utility/middleware/logging.go:90 -> [HTTP] 请求完成 rid[example-request] method[POST] route[/api/chat] code[200] elapsed[2.13s] outcome[success]
-2026-01-01 08:01:00.255 [ERRO] utility/middleware/logging.go:90 -> [HTTP] 请求未完成 rid[example-stream] method[POST] route[/api/chat_stream] code[200] elapsed[60s] outcome[timeout] error_type[timeout]
+2026-11-17 08:00:00.125 [INFO] utility/middleware/logging.go:90 -> [HTTP] 请求开始 rid[example-request] method[POST] route[/api/chat]
+2026-11-17 08:00:02.250 [INFO] internal/service/chat/chat.go:61 -> [Chat] 对话执行完成 rid[example-request] mode[invoke] history_committed[true] outcome[success] output_bytes[5] elapsed[2.12s]
+2026-11-17 08:00:02.255 [INFO] utility/middleware/logging.go:125 -> [HTTP] 请求完成 rid[example-request] method[POST] route[/api/chat] code[200] elapsed[2.13s] outcome[success] req[{"Id":"demo","Question":"hello"}] rsp[{"data":{"answer":"hello"},"message":"OK"}] req_bytes[32] rsp_bytes[42]
+2026-11-17 08:01:00.255 [ERRO] utility/middleware/logging.go:125 -> [HTTP] 请求未完成 rid[example-stream] method[POST] route[/api/chat_stream] code[200] elapsed[60s] outcome[timeout] error_type[timeout] req[{"Id":"demo","Question":"hello"}] rsp[<stream>] req_bytes[32] rsp_bytes[147]
 ```
 
 时间使用进程本地时区并包含毫秒，耗时按量级显示 ms/s。代码位置表示日志从哪里发出，不是自动推断异常最初发生处；无法解析时为 `unknown:0`。普通与 `-trimpath` 构建均支持。直接 defer 在编译器优化下可能定位到执行它的 return 行。
@@ -36,7 +36,7 @@ curl -i http://127.0.0.1:6872/api/chat \
 rg -F 'rid[example-request]' log/
 rg '\[ERRO\]|\[WARN\]' log/
 rg 'code\[401\]|code\[503\]|error_type\[timeout\]' log/
-rg '用户请求|用户检索|用户上传' log/
+rg '请求完成|请求未完成|运维分析完成|工具执行完成' log/
 tail -f log/oncall-*.log
 ```
 
@@ -50,11 +50,37 @@ tail -f log/oncall-*.log
 | `status` | 运维事件的 completed/failed 等语义状态，不重复表示 HTTP 状态码 |
 | `headers_elapsed` | 收到上游响应头的耗时，不代表完整生成结束 |
 | `elapsed` | 当前事件所覆盖操作的耗时 |
+| `req`、`rsp` | 终态 HTTP 日志中的请求、响应预览；完整且限长的 JSON 脱敏后输出，其余情况使用下表标记 |
+| `req_bytes`、`rsp_bytes` | 业务实际读取的请求字节数、底层 writer 成功接收的响应字节数；不是预览长度，也不保证等于 Content-Length 或客户端实收数量 |
 | `source_hash`、`session_hash` | 内部来源或会话的稳定摘要，便于关联而不输出存储路径 |
 | `agent`、`iteration`、`sequence`、`tool`、`count` | 运维步骤、工具及适用的结果数量 |
-| `step_id`、`duration_ms` | 关联步骤生命周期，以及服务端计算的终态耗时；不记录工具详情正文 |
+| `step_id`、`parent_step_id`、`duration_ms` | 关联步骤及父步骤，以及服务端计算的终态耗时；进度日志不记录可能含模型正文的 summary |
+| `error_code` | 运维步骤的安全错误类别，来自结构化步骤错误；与数值 HTTP `code` 不同 |
+| `output_bytes`、`history_committed` | 聊天输出或工具结果的字节数，以及聊天历史是否提交；流式聊天累计成功交付回调的正文片段 |
+| `report_bytes`、`tool_failures`、`evidence_limited` | 运维报告的返回字节数、工具失败数及证据是否受限；失败时不返回报告，report_bytes 为 0 |
+| `timestamp`、`timezone` | 时间工具实际返回的时间戳和时区，仅该工具记录这些结果字段 |
 
 SSE 开始后的失败保留 `code[200]`，通过 outcome/error_type 表明实际结果。API 错误响应和 CLI 错误 JSON 中的字符串 `code` 仍沿用原契约，与日志字段含义不同。
+
+### HTTP 正文预览
+
+中间件随业务读取请求，保留原始 body 的读取和关闭行为；响应在写出后仅计入成功写出的字节，同时覆盖 `Write` 和 `WriteString`。每侧 JSON 缓存最多 **8 KiB + 1 字节（8193 字节）**，额外一字节只用于识别超限。这个限制不截断业务请求或响应。
+
+仅 `application/json` 和 `+json` 媒体类型进入正文缓存，支持 Content-Type 参数。请求需正常到达 EOF，或实际读取量等于已知 Content-Length，且没有非 EOF 读取错误；响应写出失败或短写时不视为完整。完整、有效 UTF-8 且不超过 **8 KiB** 的 JSON 才会解析并递归脱敏，支持嵌套对象和数组。敏感键忽略大小写、连字符和下划线，匹配 Authorization、Cookie、password、secret、token、api_key、private_key、access_key 等片段，因此也覆盖 accessToken、clientSecret 和 X-Api-Key；值替换为 `[REDACTED]`。
+
+脱敏后重新序列化的 JSON，以及字段转义后的显示内容，都必须不超过 **8 KiB**。超出任一上限即改为标记，不输出未脱敏前缀或半截 JSON，因此不会切断 UTF-8 字符。该上限针对每个正文预览，不是整条日志行的长度限制。
+
+| 标记 | 含义 |
+| --- | --- |
+| `<truncated>` | 已读取/写出的正文超过 8 KiB，或脱敏、转义后的预览超限；不输出正文前缀 |
+| `<invalid>` | 完整缓存不构成有效 UTF-8 JSON，包括畸形 JSON 或尾随额外数据 |
+| `<incomplete>` | 请求未读完、读取失败，或响应写出失败/短写；即使已捕获前缀恰好可解析也不输出 |
+| `<stream>` | `text/event-stream` 响应只计字节，不缓存事件正文 |
+| `<multipart>` | multipart 请求及其响应均不缓存正文，包括上传接口的 JSON 响应 |
+| `<omitted>` | Content-Type 缺失、无法解析或不是上述 JSON/流式/上传类型 |
+| `<empty>` | JSON 类型、已确认完整且实际没有正文 |
+
+HTTP 当前输入仅在中间件终态 `req` 中记录一次，控制器不再重复打印 Id、Question 或请求流；SSE 的 JSON 请求也遵循同一规则，流式响应正文不记录。聊天、检索和运维 CLI 仍完整记录一次当前 Id/Question 或 query，并转义换行等字符，不套用 HTTP 预览上限。
 
 ## 日志级别、留存与内容
 
@@ -67,9 +93,9 @@ ONCALL_LOG_LEVEL=debug GOTOOLCHAIN=local go run .
 
 默认保留 7 个日历日（今天及之前六天），在启动和跨日写入时仅清理当前目录中严格匹配本模块命名的过期常规文件。启动检查日志目录可写性，运行期间写入失败会向 Web stderr 输出一次安全提示，不改变业务响应。
 
-**当前用户输入会进入日志**：聊天/SSE 记录一次完整解析后的 Id、Question；运维记录固定请求 `{}` 及实际任务；CLI 记录当前问题或查询；上传记录原始文件名、大小和格式。解析失败时不倾倒原始请求流。
+**普通 JSON 请求和响应的限长预览会进入日志**，可能包含当前问题、模型回答、运维报告、文档内容或工具详情；上述敏感键会递归脱敏。上传正文、multipart 响应及 SSE 事件正文不进入 HTTP 预览。业务步骤日志仅补充输出字节数、数量、状态、父子步骤和时间工具结果，不额外打印报告、模型提示词、聊天历史或完整工具结果，也不直接输出上游原始错误。
 
-不记录环境密钥、认证 Header、上传文件正文、聊天历史、模型提示词、模型回答、文档正文、完整工具结果或思维链；不直接输出上游原始错误。请根据用户输入的实际敏感程度管理日志权限、备份和留存。
+脱敏按 JSON 字段名进行，不会识别任意自然语言中的敏感信息；CLI 当前输入仍完整记录。请据实际数据要求管理日志权限、备份和留存。`rid` 用于本地关联，被动 `trace` 读取与外部客户端行为见上文，不提供自动跨服务追踪。
 
 ## 常见问题
 

@@ -9,7 +9,6 @@ import (
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -53,7 +52,6 @@ func (c *AIOpsController) validate(request *gin.Context) error {
 			return aiops.Wrap(pipeline.ErrInvalidInput, nil)
 		}
 	}
-	logger.Info(request.Request.Context(), "Ops", "用户请求", logger.F("request", "{}"))
 	if c.service == nil {
 		return aiops.Wrap(aiops.ErrInitialization, nil)
 	}

@@ -21,7 +21,7 @@ func (t observedTool) InvokableRun(ctx context.Context, input string, opts ...to
 	started := time.Now()
 	logger.Debug(ctx, "Tool", "开始执行工具", logger.F("tool", t.name))
 	defer func() {
-		fields := []logger.Field{logger.F("tool", t.name), logger.F("elapsed", time.Since(started))}
+		fields := []logger.Field{logger.F("tool", t.name), logger.F("elapsed", time.Since(started)), logger.F("output_bytes", len(output))}
 		if err != nil {
 			errorType := logger.ErrorType(err)
 			var failure *operations.Error
@@ -43,6 +43,13 @@ func (t observedTool) InvokableRun(ctx context.Context, input string, opts ...to
 						fields = append(fields, logger.F("count", len(items)))
 					}
 				}
+			}
+		}
+		// The clock result is safe to record; other tool contents remain private.
+		if t.name == GetCurrentTime {
+			var clock GetCurrentTimeOutput
+			if json.Unmarshal([]byte(output), &clock) == nil {
+				fields = append(fields, logger.F("timestamp", clock.Timestamp), logger.F("timezone", clock.TimeZone))
 			}
 		}
 		logger.Info(ctx, "Tool", "工具执行完成", fields...)

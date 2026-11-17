@@ -2,12 +2,9 @@ package upload
 
 import (
 	"errors"
-	"path/filepath"
-	"strings"
 
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/upload/v1"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -27,7 +24,6 @@ func (c *ControllerV1) upload(request *gin.Context) (res *v1.UploadRes, err erro
 	if err != nil {
 		return nil, knowledge.ErrInvalidDocument
 	}
-	logger.Info(ctx, "Upload", "用户上传", logger.F("file_name", file.Filename), logger.F("size", file.Size), logger.F("format", strings.ToLower(filepath.Ext(file.Filename))))
 	input, err := file.Open()
 	if err != nil {
 		return nil, errors.Join(knowledge.ErrSave, knowledge.ErrRetryable, err)

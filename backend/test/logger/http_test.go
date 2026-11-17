@@ -38,7 +38,7 @@ func (memoryRetriever) Retrieve(ctx context.Context, _ string, _ ...einoretrieve
 	return []*schema.Document{(&schema.Document{ID: "chunk-1", Content: "private-document-body", MetaData: map[string]any{"source": "private-source.md"}}).WithScore(.9)}, nil
 }
 
-func localModel() *httptest.Server {
+func localModel(observers ...func(string)) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Stream   bool `json:"stream"`
@@ -51,6 +51,9 @@ func localModel() *httptest.Server {
 			return
 		}
 		question := in.Messages[len(in.Messages)-1].Content
+		for _, observe := range observers {
+			observe(question)
+		}
 		if question == "__error__" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(503)
@@ -173,18 +176,18 @@ func exerciseHTTP(t *testing.T, base string) {
 			if !strings.Contains(lines, "请求开始") || !strings.Contains(lines, fmt.Sprintf("code[%d]", tc.status)) {
 				t.Fatal("missing boundary", lines)
 			}
-			if tc.query != "" {
-				if strings.Count(lines, "用户请求") != 1 || strings.Count(lines, "Question["+tc.query+"]") != 1 || !strings.Contains(lines, "Id[private-session-id]") {
-					t.Fatal("parsed request must be logged exactly once", lines)
-				}
-			} else if strings.Contains(lines, "用户请求") {
-				t.Fatal("invalid request body was logged", lines)
+			query, _ := json.Marshal(tc.query)
+			if strings.Count(lines, " req[") != 1 || !strings.Contains(lines, `"Question":`+string(query)) || !strings.Contains(lines, `"Id":"private-session-id"`) || strings.Contains(lines, "用户请求") {
+				t.Fatal("valid JSON request must appear only in the terminal HTTP record", lines)
 			}
 			assertNumericHTTPCodes(t, lines)
 			if tc.path == "chat_stream" && tc.outcome != "success" && !strings.Contains(lines, "error_type[") {
 				t.Fatal("SSE failure missing error category", lines)
 			}
 			if tc.path == "chat_stream" {
+				if !strings.Contains(lines, "rsp[<stream>]") || strings.Contains(lines, "private-answer-body") || strings.Contains(lines, `"answer":`) {
+					t.Fatal("stream contents must be summarized", lines)
+				}
 				if tc.outcome == "success" {
 					if !strings.Contains(body, "event: done") || !strings.Contains(lines, "流式响应完成") {
 						t.Fatal("stream success", body, lines)
@@ -192,6 +195,8 @@ func exerciseHTTP(t *testing.T, base string) {
 				} else if !strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
 					t.Fatal("stream failure", body)
 				}
+			} else if tc.status == 200 && !strings.Contains(lines, `"answer":`) {
+				t.Fatal("ordinary JSON response was not captured", lines)
 			}
 		})
 	}
@@ -217,7 +222,7 @@ func exerciseHTTP(t *testing.T, base string) {
 			t.Fatal("missing business caller", position, lines)
 		}
 	}
-	for _, secret := range []string{"private-answer-body", "private-document-body", "private-source.md", "private-api-key", "private-provider-error", "private-path-secret", "private-query-key", "Authorization", "http://"} {
+	for _, secret := range []string{"private-document-body", "private-source.md", "private-api-key", "private-provider-error", "fixture-private-error", "private-path-secret", "private-query-key", "Authorization", "<documents>", "http://"} {
 		if strings.Contains(logs.String(), secret) {
 			t.Fatal("sensitive content in logs", secret)
 		}
@@ -237,27 +242,49 @@ func assertNumericHTTPCodes(t *testing.T, logs string) {
 	}
 }
 
-func TestCompleteParsedRequestsStaySingleLine(t *testing.T) {
-	upstream := localModel()
+func TestRequestPayloadsStayBoundedAndSingleLine(t *testing.T) {
+	questions := make(chan string, 4)
+	upstream := localModel(func(question string) { questions <- question })
 	defer upstream.Close()
 	var logs capture
 	root, _ := testLogger(t, settings(), logger.Options{Console: &logs})
 	url, _ := loggedAPI(t, root, upstream.URL)
 	session := "  原始会话\n\"quoted\"  "
-	question := "  中文开头\n\"quoted\"\\path\t\x1b[31m " + strings.Repeat("完整正文", 1200) + "  "
-	for _, path := range []string{"chat", "chat_stream"} {
-		status, id, _ := post(t, url+"/api/"+path, question, session)
-		if status != 200 {
-			t.Fatal(status)
+	for _, question := range []string{
+		"  中文开头\n\"quoted\"\\path\t\x1b[31m ] injected[field  ",
+		"  long-private-question " + strings.Repeat("完整正文", 1200) + " long-private-tail  ",
+	} {
+		for _, path := range []string{"chat", "chat_stream"} {
+			status, id, _ := post(t, url+"/api/"+path, question, session)
+			if status != 200 {
+				t.Fatal(status)
+			}
+			await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome[success]") })
+			select {
+			case received := <-questions:
+				if received != strings.TrimSpace(question) {
+					t.Fatal("logging changed the complete question received by the model")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("question did not reach the model")
+			}
+			lines := requestLines(logs.String(), id)
+			if strings.Count(lines, " req[") != 1 || strings.Contains(lines, "用户请求") || strings.Contains(lines, "\x1b") {
+				t.Fatal("request was duplicated or contained terminal control characters", lines)
+			}
+			if len(question) > 8<<10 {
+				if !strings.Contains(lines, "req[<truncated>]") || strings.Contains(lines, "long-private-") || strings.Contains(lines, "完整正文") {
+					t.Fatal("oversized request contents were exposed", lines)
+				}
+			} else {
+				encoded, _ := json.Marshal(map[string]string{"Id": session, "Question": question})
+				escaped := strings.NewReplacer("\\", `\\`, "]", `\]`).Replace(string(encoded))
+				if !strings.Contains(lines, "req["+escaped+"]") {
+					t.Fatal("short JSON request was changed or split across physical lines", lines)
+				}
+			}
+			assertNumericHTTPCodes(t, lines)
 		}
-		await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome[success]") })
-		lines := requestLines(logs.String(), id)
-		escapedQuestion := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\t", `\t`, "\x1b", `\x1b`).Replace(question)
-		escapedSession := strings.ReplaceAll(session, "\n", `\n`)
-		if strings.Count(lines, "用户请求") != 1 || strings.Count(lines, "Question["+escapedQuestion+"]") != 1 || !strings.Contains(lines, "Id["+escapedSession+"]") || strings.Contains(lines, "\x1b") {
-			t.Fatal("request was truncated, duplicated or not escaped")
-		}
-		assertNumericHTTPCodes(t, lines)
 	}
 	response, err := http.Post(url+"/api/chat", "application/json", strings.NewReader(`{"Id":"invalid-body-marker","Question":`))
 	if err != nil {
@@ -271,7 +298,7 @@ func TestCompleteParsedRequestsStaySingleLine(t *testing.T) {
 	id := response.Header.Get("X-Request-ID")
 	await(t, func() bool { return strings.Contains(requestLines(logs.String(), id), "outcome[failed]") })
 	lines := requestLines(logs.String(), id)
-	if strings.Contains(lines, "用户请求") || strings.Contains(logs.String(), "invalid-body-marker") {
+	if (!strings.Contains(lines, "req[<invalid>]") && !strings.Contains(lines, "req[<incomplete>]")) || strings.Contains(lines, "用户请求") || strings.Contains(logs.String(), "invalid-body-marker") {
 		t.Fatal("unparsed request was logged", lines)
 	}
 	assertNumericHTTPCodes(t, lines)
@@ -379,7 +406,7 @@ func TestToolsSharedWrapperLogsNamesWithoutContents(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if !strings.Contains(out.String(), "rid["+id+"]") || !strings.Contains(out.String(), "tool[query_internal_docs]") || !strings.Contains(out.String(), "tool[get_current_time]") || !strings.Contains(out.String(), "count[1]") {
+	if !strings.Contains(out.String(), "rid["+id+"]") || !strings.Contains(out.String(), "tool[query_internal_docs]") || !strings.Contains(out.String(), "tool[get_current_time]") || !strings.Contains(out.String(), "count[1]") || !strings.Contains(out.String(), "output_bytes[") || !strings.Contains(out.String(), "timestamp[") || !strings.Contains(out.String(), "timezone[Asia/Shanghai]") {
 		t.Fatal(out.String())
 	}
 	for _, secret := range []string{"private-tool-query", "private-document-body", "private-source.md"} {

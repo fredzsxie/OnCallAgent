@@ -2,7 +2,6 @@ package chat
 
 import (
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/chat/v1"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +13,6 @@ func (c *ControllerV1) ChatStream(request *gin.Context) {
 		return
 	}
 	ctx := request.Request.Context()
-	logger.Info(ctx, "Chat", "用户请求", logger.F("Id", req.Id), logger.F("Question", req.Question))
 	err := c.streams.Serve(ctx, request.Writer, req.Id, req.Question)
 	middleware.Respond(request, nil, err)
 }

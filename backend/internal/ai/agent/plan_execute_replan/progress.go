@@ -144,7 +144,11 @@ func (s *runState) emit(ctx context.Context, e Event) {
 	e.Timestamp = s.now().Format(time.RFC3339Nano)
 	e.Summary = clip(e.Summary, 1024)
 	s.events = append(s.events, CloneEvents([]Event{e})[0])
-	fields := []logger.Field{logger.F("agent", e.Agent), logger.F("event", e.Type), logger.F("iteration", e.Iteration), logger.F("sequence", e.Sequence), logger.F("tool", e.Tool), logger.F("status", e.Status), logger.F("step_id", e.StepID)}
+	// Summaries may contain model text; keep logs limited to execution metadata.
+	fields := []logger.Field{logger.F("agent", e.Agent), logger.F("event", e.Type), logger.F("iteration", e.Iteration), logger.F("sequence", e.Sequence), logger.F("tool", e.Tool), logger.F("status", e.Status), logger.F("step_id", e.StepID), logger.F("parent_step_id", e.ParentStepID)}
+	if e.Error != nil {
+		fields = append(fields, logger.F("error_code", e.Error.Code))
+	}
 	if e.Count != nil {
 		fields = append(fields, logger.F("count", *e.Count))
 	}
@@ -152,7 +156,7 @@ func (s *runState) emit(ctx context.Context, e Event) {
 		fields = append(fields, logger.F("duration_ms", *e.DurationMS))
 	}
 	log := logger.Info
-	if e.Status == "failed" {
+	if e.Status == "failed" || e.Status == "cancelled" {
 		log = logger.Warn
 	}
 	log(ctx, "Ops", "运维执行事件", fields...)

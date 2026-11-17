@@ -54,7 +54,11 @@ func (s *ChatService) Chat(ctx context.Context, id, question string) (answer str
 	started := time.Now()
 	committed := false
 	defer func() {
-		logger.Finish(ctx, "Chat", "对话执行", started, err, logger.F("mode", "invoke"), logger.F("history_committed", committed))
+		outcome := logger.ErrorType(err)
+		if outcome != "success" && outcome != "cancelled" && outcome != "timeout" {
+			outcome = "failed"
+		}
+		logger.Finish(ctx, "Chat", "对话执行", started, err, logger.F("mode", "invoke"), logger.F("history_committed", committed), logger.F("outcome", outcome), logger.F("output_bytes", len(answer)))
 	}()
 	id, question, err = normalize(id, question)
 	if err != nil {
@@ -87,8 +91,14 @@ func (s *ChatService) Chat(ctx context.Context, id, question string) (answer str
 func (s *ChatService) Stream(ctx context.Context, id, question string, callbacks StreamCallbacks) (err error) {
 	started := time.Now()
 	committed := false
+	var answer strings.Builder
 	defer func() {
-		logger.Finish(ctx, "Chat", "对话执行", started, err, logger.F("mode", "stream"), logger.F("history_committed", committed))
+		outcome := logger.ErrorType(err)
+		if outcome != "success" && outcome != "cancelled" && outcome != "timeout" {
+			outcome = "failed"
+		}
+		// Count accepted chunks without copying answer content into completion logs.
+		logger.Finish(ctx, "Chat", "对话执行", started, err, logger.F("mode", "stream"), logger.F("history_committed", committed), logger.F("outcome", outcome), logger.F("output_bytes", answer.Len()))
 	}()
 	id, question, err = normalize(id, question)
 	if err != nil {
@@ -122,7 +132,6 @@ func (s *ChatService) Stream(ctx context.Context, id, question string, callbacks
 	if reader == nil {
 		return pipeline.ErrAgentFailed
 	}
-	var answer strings.Builder
 	for {
 		chunk, err := reader.Recv()
 		if err == io.EOF {

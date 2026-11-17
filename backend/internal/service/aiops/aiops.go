@@ -50,6 +50,7 @@ func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink fun
 	logger.Info(ctx, "Ops", "开始运维分析", logger.F("timeout", s.timeout), logger.F("query", query))
 	query = strings.TrimSpace(query)
 	if query == "" {
+		logger.Failure(ctx, "Ops", "运维分析失败", pipeline.ErrInvalidInput, logger.F("error_type", "invalid_input"), logger.F("report_bytes", 0), logger.F("events", 0), logger.F("elapsed", time.Since(started)))
 		return &pipeline.Result{Detail: []pipeline.Event{}}, Wrap(pipeline.ErrInvalidInput, nil)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
@@ -72,7 +73,7 @@ func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink fun
 	}
 	if err != nil {
 		result.Report = ""
-		logger.Failure(ctx, "Ops", "运维分析失败", err, logger.F("error_type", pipeline.ErrorCode(err)), logger.F("events", len(result.Detail)), logger.F("elapsed", time.Since(started)))
+		logger.Failure(ctx, "Ops", "运维分析失败", err, logger.F("error_type", pipeline.ErrorCode(err)), logger.F("events", len(result.Detail)), logger.F("report_bytes", len(result.Report)), logger.F("elapsed", time.Since(started)))
 		return result, Wrap(err, result.Detail)
 	}
 	failures := 0
@@ -81,7 +82,7 @@ func (s *AIOpsService) RunWithEvents(ctx context.Context, query string, sink fun
 			failures++
 		}
 	}
-	logger.Info(ctx, "Ops", "运维分析完成", logger.F("events", len(result.Detail)), logger.F("tool_failures", failures), logger.F("evidence_limited", failures > 0), logger.F("elapsed", time.Since(started)))
+	logger.Info(ctx, "Ops", "运维分析完成", logger.F("events", len(result.Detail)), logger.F("tool_failures", failures), logger.F("evidence_limited", failures > 0), logger.F("report_bytes", len(result.Report)), logger.F("elapsed", time.Since(started)))
 	return result, nil
 }
 

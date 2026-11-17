@@ -3,6 +3,7 @@ package ops_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -32,7 +33,7 @@ func TestOpsLogsSummariesWithoutPlanOrReportContents(t *testing.T) {
 			if err != nil || result.Report == "" {
 				t.Fatal(err)
 			}
-			for _, want := range []string{"rid[" + id + "]", "event[plan]", "event[execute]", "event[tool]", "tool[query_prometheus_alerts]", "运维分析完成", "query[" + aiops.DefaultQuery + "]"} {
+			for _, want := range []string{"rid[" + id + "]", "event[plan]", "event[execute]", "event[tool]", "tool[query_prometheus_alerts]", "运维分析完成", "query[" + aiops.DefaultQuery + "]", "parent_step_id[", "output_bytes[", fmt.Sprintf("report_bytes[%d]", len(result.Report))} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatal("missing event", want, out.String())
 				}
@@ -56,13 +57,19 @@ func TestOpsHTTPLogsFixedEnvelope(t *testing.T) {
 	root := logger.WithLogger(context.Background(), logs)
 	a := build(t, cfg(), plannerModel(), toolExecutor(t, false, false), registry(t, false, false))
 	url := startOpsAPI(t, service(t, a, time.Second), root)
-	for _, body := range []string{"{}", `{"invalid":"private-invalid-body"}`} {
-		response, err := http.Post(url+"/api/ai_ops", "application/json", strings.NewReader(body))
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{{"{}", http.StatusOK}, {`{"api_key":"private-invalid-body"}`, http.StatusBadRequest}} {
+		response, err := http.Post(url+"/api/ai_ops", "application/json", strings.NewReader(tc.body))
 		if err != nil {
 			t.Fatal(err)
 		}
 		io.Copy(io.Discard, response.Body)
 		response.Body.Close()
+		if response.StatusCode != tc.status {
+			t.Fatalf("unexpected HTTP status: got %d want %d", response.StatusCode, tc.status)
+		}
 	}
 	files, _ := filepath.Glob(filepath.Join(dir, "oncall-*.log"))
 	if len(files) != 1 {
@@ -73,7 +80,7 @@ func TestOpsHTTPLogsFixedEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if strings.Count(text, "request[{}]") != 1 || strings.Count(text, "query["+aiops.DefaultQuery+"]") != 1 || strings.Contains(text, "private-invalid-body") {
+	if strings.Count(text, "req[{}]") != 1 || strings.Count(text, "query["+aiops.DefaultQuery+"]") != 1 || strings.Contains(text, "private-invalid-body") || !strings.Contains(text, "REDACTED") || strings.Contains(text, "用户请求") {
 		t.Fatal("invalid or duplicate request content", text)
 	}
 }

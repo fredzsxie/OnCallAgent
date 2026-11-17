@@ -4,6 +4,8 @@ import (
 	"errors"
 	"mime"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
@@ -65,6 +67,8 @@ func UploadBody(maxBytes int64) gin.HandlerFunc {
 			reject(knowledge.ErrTooLarge)
 			return
 		}
+		file := files[0]
+		logger.Info(r.Context(), "Upload", "用户上传", logger.F("file_name", file.Filename), logger.F("size", file.Size), logger.F("format", strings.ToLower(filepath.Ext(file.Filename))))
 		c.Next()
 	}
 }
