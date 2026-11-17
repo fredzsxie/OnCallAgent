@@ -71,8 +71,8 @@ func (c *ControllerV1) Chunks(request *gin.Context) {
 }
 func (c *ControllerV1) Search(request *gin.Context) {
 	r := v1.SearchReq{TopK: 10}
-	if request.ShouldBindJSON(&r) != nil {
-		middleware.Respond(request, nil, middleware.ErrInvalidRequest)
+	if err := middleware.BindJSON(request, &r); err != nil {
+		middleware.Respond(request, nil, err)
 		return
 	}
 	result, err := c.search.Search(request.Request.Context(), knowledge.SearchRequest{Query: r.Query, Mode: r.Mode, TopK: r.TopK, Filters: r.Filters, DenseMinScore: r.DenseMinScore})

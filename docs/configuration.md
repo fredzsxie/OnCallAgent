@@ -63,7 +63,7 @@ ONCALL_SERVER_PORT=6873 GOTOOLCHAIN=local go run .
 | --- | --- | --- |
 | `ONCALL_FILE_DIR` | `./data/knowledge` | 保存上传的版本文件；内部规范化为绝对路径 |
 | `ONCALL_KNOWLEDGE_CATALOG_PATH` | `<ONCALL_FILE_DIR>/catalog.sqlite` | SQLite 文档目录，绑定集合与 Embedding 配置 |
-| `ONCALL_UPLOAD_MAX_BYTES` | `10485760` | 正整数，默认 10 MiB；服务端做最终校验 |
+| `ONCALL_UPLOAD_MAX_BYTES` | `10485760` | 单文件正整数上限，默认 10 MiB；所有 HTTP 请求体总上限为此值加 1 MiB |
 | `ONCALL_KNOWLEDGE_CHUNK_SIZE` | `2000` | 4–65535，UTF-8 字节数 |
 | `ONCALL_KNOWLEDGE_CHUNK_OVERLAP` | `200` | 非负，且小于 chunk size |
 | `ONCALL_KNOWLEDGE_BATCH_SIZE` | `16` | 正整数，每批写入片段数 |

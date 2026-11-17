@@ -3,7 +3,9 @@ package chat
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"mime"
+	"net/http"
 
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/chat/v1"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
@@ -43,6 +45,10 @@ func (c *AIOpsController) validate(request *gin.Context) error {
 	// Empty bodies remain valid; nonempty bodies must be exactly the fixed-task JSON object.
 	raw, err := request.GetRawData()
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return err
+		}
 		return aiops.Wrap(pipeline.ErrInvalidInput, nil)
 	}
 	if len(bytes.TrimSpace(raw)) > 0 {

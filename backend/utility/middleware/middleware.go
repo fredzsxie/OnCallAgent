@@ -58,6 +58,10 @@ func Recovery() gin.HandlerFunc {
 
 // Keep public error messages identical before and after the SSE response starts.
 func ErrorResponse(err error) (int, Response) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		err = knowledge.ErrTooLarge
+	}
 	var failure *aiops.Error
 	if errors.As(err, &failure) {
 		status := http.StatusBadGateway

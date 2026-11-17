@@ -32,8 +32,12 @@ func init() {
 
 // New shares the production route and middleware assembly with HTTP fixtures.
 func New(root context.Context, deps Dependencies) *gin.Engine {
+	maxUploadBytes := deps.MaxUploadBytes
+	if maxUploadBytes == 0 {
+		maxUploadBytes = 10 << 20
+	}
 	engine := gin.New()
-	engine.Use(middleware.ObserveHTTP(root), middleware.Recovery())
+	engine.Use(middleware.ObserveHTTP(root), middleware.Recovery(), middleware.BodyLimit(maxUploadBytes+middleware.MultipartOverhead))
 
 	healthAPI := health.NewV1()
 	chatAPI := chatcontroller.NewV1(deps.Chat, deps.Streams)
@@ -53,7 +57,7 @@ func New(root context.Context, deps Dependencies) *gin.Engine {
 	api.GET("/knowledge/documents/:id/chunks", knowledgeAPI.Chunks)
 	api.POST("/knowledge/search", knowledgeAPI.Search)
 
-	files := api.Group("", middleware.UploadBody(deps.MaxUploadBytes))
+	files := api.Group("", middleware.UploadBody(maxUploadBytes))
 	files.POST("/upload", uploadAPI.Upload)
 	files.POST("/knowledge/documents", writeAPI.Create)
 	files.PUT("/knowledge/documents/:id", writeAPI.Update)

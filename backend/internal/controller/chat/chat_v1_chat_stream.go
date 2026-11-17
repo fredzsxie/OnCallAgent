@@ -8,8 +8,8 @@ import (
 
 func (c *ControllerV1) ChatStream(request *gin.Context) {
 	var req v1.ChatStreamReq
-	if request.ShouldBindJSON(&req) != nil {
-		middleware.Respond(request, nil, middleware.ErrInvalidRequest)
+	if err := middleware.BindJSON(request, &req); err != nil {
+		middleware.Respond(request, nil, err)
 		return
 	}
 	ctx := request.Request.Context()
