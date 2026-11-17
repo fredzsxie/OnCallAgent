@@ -2,8 +2,8 @@ package frontend_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -18,7 +18,7 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
-	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gin-gonic/gin"
 )
 
 type opsFixtureAgent struct {
@@ -31,11 +31,11 @@ func (a opsFixtureAgent) RunWithEvents(ctx context.Context, q string, sink func(
 }
 
 // Only the explicit local acceptance helper exposes scenario controls; production routes never do.
-func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, store *testutil.MemoryStore, shared ...einoretriever.Retriever) *aiops.AIOpsService {
+func addOpsFixture(t *testing.T, ctx context.Context, store *testutil.MemoryStore, shared ...einoretriever.Retriever) (*aiops.AIOpsService, gin.HandlerFunc) {
 	t.Helper()
 	base := os.Getenv("ONCALL_OPS_SIM_BASE_URL")
 	if base == "" {
-		return nil
+		return nil, nil
 	}
 	var baseRetriever einoretriever.Retriever = memoryRetriever{store}
 	retrievalMode := "dense"
@@ -94,21 +94,21 @@ func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, stor
 			t.Fatal(err)
 		}
 	}
-	server.BindHandler("/__test/ops-scenario", func(r *ghttp.Request) {
-		if r.Method != "POST" {
-			r.Response.WriteHeader(405)
+	scenario := func(c *gin.Context) {
+		if c.Request.Method != http.MethodPost {
+			c.Status(http.StatusMethodNotAllowed)
 			return
 		}
 		var request struct {
 			Scenario string `json:"scenario"`
 		}
-		if json.Unmarshal(r.GetBody(), &request) != nil || agents[request.Scenario] == nil {
-			r.Response.WriteHeader(400)
+		if c.ShouldBindJSON(&request) != nil || agents[request.Scenario] == nil {
+			c.Status(http.StatusBadRequest)
 			return
 		}
 		mode.Store(request.Scenario)
-		r.Response.WriteJson(map[string]string{"scenario": request.Scenario})
-	})
+		c.JSON(http.StatusOK, gin.H{"scenario": request.Scenario})
+	}
 	s, err := aiops.New(opsFixtureAgent{mode, agents}, 20*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -116,5 +116,5 @@ func addOpsFixture(t *testing.T, ctx context.Context, server *ghttp.Server, stor
 	if _, err = store.Store(ctx, []*schema.Document{{ID: "ops-fixture-doc", Content: "HighCPU: check processes and verify load before making changes.", MetaData: map[string]any{"source": "auth.md", "title": "Operations runbook"}}}); err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	return s
+	return s, scenario
 }

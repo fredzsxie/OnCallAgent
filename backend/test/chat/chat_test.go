@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,14 +16,11 @@ import (
 	"github.com/cloudwego/eino/schema"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	controller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/mem"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 // These are local protocol tests of the real Eino adapter, not a runtime mock mode.
@@ -57,35 +53,19 @@ func startAPI(t *testing.T, service *chatservice.ChatService) string {
 }
 func startAPIWithWriter(t *testing.T, service *chatservice.ChatService, wrap func(http.ResponseWriter) http.ResponseWriter) string {
 	t.Helper()
-	server := ghttp.GetServer("chat-test-" + guid.S())
-	server.SetDumpRouterMap(false)
-	server.SetAccessLogEnabled(false)
-	server.SetErrorLogEnabled(false)
-	server.Group("/api", func(group *ghttp.RouterGroup) {
-		group.Middleware(middleware.ResponseMiddleware)
-		streams, err := sse.New(service)
-		if err != nil {
-			t.Fatal(err)
-		}
-		group.Bind(controller.NewV1(service, streams))
-	})
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	streams, err := sse.New(service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.SetListener(listener); err != nil {
-		_ = listener.Close()
-		t.Fatal(err)
-	}
+	engine := router.New(context.Background(), router.Dependencies{Chat: service, Streams: streams})
+	var handler http.Handler = engine
 	if wrap != nil {
-		server.SetHandler(func(w http.ResponseWriter, r *http.Request) { server.ServeHTTP(wrap(w), r) })
+		// Wrap before Gin so response-controller failures reach the streaming writer.
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { engine.ServeHTTP(wrap(w), r) })
 	}
-	if err := server.Start(); err != nil {
-		_ = listener.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = server.Shutdown() })
-	return "http://" + listener.Addr().String()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	return server.URL
 }
 
 func TestChatContractAndReusableEinoModel(t *testing.T) {

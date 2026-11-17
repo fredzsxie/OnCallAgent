@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	chatpipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
@@ -13,10 +16,8 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/tools"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
-	knowledgecontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/server"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
@@ -25,9 +26,6 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/mem"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gctx"
 )
 
 func main() {
@@ -43,7 +41,7 @@ func run() (err error) {
 		log.Print(err)
 		return err
 	}
-	ctx, logs, err := logger.Bootstrap(gctx.New(), true)
+	ctx, logs, err := logger.Bootstrap(context.Background(), true)
 	if err != nil {
 		log.Print(err)
 		return err
@@ -198,32 +196,23 @@ func run() (err error) {
 		return err
 	}
 
-	s := g.Server()
-	middleware.ObserveHTTP(s, ctx)
-	s.Group("/api", func(group *ghttp.RouterGroup) {
-		group.Middleware(middleware.ResponseMiddleware)
-		group.Bind(health.NewV1())
-		group.Bind(knowledgecontroller.NewV1(manager, search))
-		group.Bind(chat.NewV1(chatService, streams))
-		group.Bind(chat.NewAIOpsV1(opsService))
-		group.Group("", func(files *ghttp.RouterGroup) {
-			files.Middleware(middleware.UploadBody(knowledgeCfg.MaxUploadBytes))
-			files.Bind(upload.NewV1(knowledgeService))
-			files.Bind(knowledgecontroller.NewWriteV1(manager))
-		})
+	engine := router.New(ctx, router.Dependencies{
+		Chat: chatService, Streams: streams, Ops: opsService,
+		Manager: manager, Search: search, Upload: knowledgeService,
+		MaxUploadBytes: knowledgeCfg.MaxUploadBytes,
 	})
-	s.SetClientMaxBodySize(knowledgeCfg.MaxUploadBytes + middleware.MultipartOverhead)
-	s.SetPort(cfg.Port)
 	stage = "http_listen"
-	if err = s.Start(); err != nil {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	if err != nil {
 		return errors.New("cannot start HTTP server; check listen port")
 	}
-	middleware.PrintRoutes(ctx, s)
+	middleware.PrintRoutes(ctx, engine)
 	logger.Info(ctx, "Tool", "工具注册完成", logger.F("docs_enabled", toolsCfg.QueryInternalDocsEnabled), logger.F("time_enabled", toolsCfg.GetCurrentTimeEnabled), logger.F("alerts_enabled", toolsCfg.QueryPrometheusAlertsEnabled))
 	logger.Info(ctx, "App", "HTTP 服务已启动", logger.F("port", cfg.Port))
 	stage = "serving"
-	ghttp.Wait()
-	return nil
+	serving, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return server.Serve(serving, listener, engine)
 }
 
 // Configuration loaders return validation messages without interpolating configured values.

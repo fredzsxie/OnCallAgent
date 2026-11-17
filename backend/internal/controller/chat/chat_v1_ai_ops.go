@@ -2,50 +2,58 @@ package chat
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	"mime"
+
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/chat/v1"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"mime"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
+	"github.com/gin-gonic/gin"
 )
 
 type AIOpsController struct{ service *aiops.AIOpsService }
 
 func NewAIOpsV1(service *aiops.AIOpsService) *AIOpsController { return &AIOpsController{service} }
 
-func (c *AIOpsController) AIOps(ctx context.Context, _ *v1.AIOpsReq) (*v1.AIOpsRes, error) {
-	if err := c.validate(ctx); err != nil {
-		return nil, err
+func (c *AIOpsController) AIOps(request *gin.Context) {
+	if err := c.validate(request); err != nil {
+		middleware.Respond(request, nil, err)
+		return
 	}
-	out, err := c.service.Analyze(ctx)
+	out, err := c.service.Analyze(request.Request.Context())
 	if err != nil {
-		return nil, err
+		middleware.Respond(request, nil, err)
+		return
 	}
-	return &v1.AIOpsRes{Result: out.Report, Detail: out.Detail}, nil
+	middleware.Respond(request, &v1.AIOpsRes{Result: out.Report, Detail: out.Detail}, nil)
 }
 
-func (c *AIOpsController) AIOpsStream(ctx context.Context, _ *v1.AIOpsStreamReq) (*v1.AIOpsStreamRes, error) {
-	if err := c.validate(ctx); err != nil {
-		return nil, err
+func (c *AIOpsController) AIOpsStream(request *gin.Context) {
+	if err := c.validate(request); err != nil {
+		middleware.Respond(request, nil, err)
+		return
 	}
-	return nil, sse.ServeOps(ctx, ghttp.RequestFromCtx(ctx), c.service)
+	err := sse.ServeOps(request.Request.Context(), request.Writer, c.service)
+	middleware.Respond(request, nil, err)
 }
 
-func (c *AIOpsController) validate(ctx context.Context) error {
-	// GoFrame skips body decoding for a fieldless request; validate the fixed-task JSON envelope here.
-	r := ghttp.RequestFromCtx(ctx)
-	if r != nil && len(bytes.TrimSpace(r.GetBody())) > 0 {
-		kind, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+func (c *AIOpsController) validate(request *gin.Context) error {
+	// Empty bodies remain valid; nonempty bodies must be exactly the fixed-task JSON object.
+	raw, err := request.GetRawData()
+	if err != nil {
+		return aiops.Wrap(pipeline.ErrInvalidInput, nil)
+	}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		kind, _, _ := mime.ParseMediaType(request.GetHeader("Content-Type"))
 		var body map[string]json.RawMessage
-		if kind != "application/json" || json.Unmarshal(r.GetBody(), &body) != nil || body == nil || len(body) != 0 {
+		if kind != "application/json" || json.Unmarshal(raw, &body) != nil || body == nil || len(body) != 0 {
 			return aiops.Wrap(pipeline.ErrInvalidInput, nil)
 		}
 	}
-	logger.Info(ctx, "Ops", "用户请求", logger.F("request", "{}"))
+	logger.Info(request.Request.Context(), "Ops", "用户请求", logger.F("request", "{}"))
 	if c.service == nil {
 		return aiops.Wrap(aiops.ErrInitialization, nil)
 	}

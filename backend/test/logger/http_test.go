@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,16 +21,12 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/retriever"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/ai/tools"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	controller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/mem"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 type memoryRetriever struct{}
@@ -80,7 +75,7 @@ func localModel() *httptest.Server {
 	}))
 }
 
-func loggedAPI(t *testing.T, root context.Context, base string, wraps ...func(http.ResponseWriter) http.ResponseWriter) (string, *ghttp.Server) {
+func loggedAPI(t *testing.T, root context.Context, base string, wraps ...func(http.ResponseWriter) http.ResponseWriter) (string, *httptest.Server) {
 	t.Helper()
 	model, err := client.NewOpenAI(root, config.ChatModel{BaseURL: base + "/v1", Model: "fixture", APIKey: "private-api-key", Timeout: 500 * time.Millisecond})
 	if err != nil {
@@ -101,32 +96,15 @@ func loggedAPI(t *testing.T, root context.Context, base string, wraps ...func(ht
 		t.Fatal(err)
 	}
 	streams, _ := sse.New(chat)
-	server := ghttp.GetServer("logger-test-" + guid.S())
-	middleware.ObserveHTTP(server, root)
-	server.Group("/api", func(group *ghttp.RouterGroup) {
-		group.Middleware(middleware.ResponseMiddleware)
-		group.Bind(controller.NewV1(chat, streams))
-		group.Bind(health.NewV1())
-	})
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := server.SetListener(listener); err != nil {
-		t.Fatal(err)
-	}
+	engine := router.New(root, router.Dependencies{Chat: chat, Streams: streams})
+	var handler http.Handler = engine
 	if len(wraps) > 0 {
-		server.SetHandler(func(w http.ResponseWriter, r *http.Request) { server.ServeHTTP(wraps[0](w), r) })
+		// Wrap before Gin so response-controller failures reach the streaming writer.
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { engine.ServeHTTP(wraps[0](w), r) })
 	}
-	if err := server.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := server.Shutdown(); err != nil {
-			t.Error(err)
-		}
-	})
-	return "http://" + listener.Addr().String(), server
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	return server.URL, server
 }
 
 func post(t *testing.T, url, question string, sessions ...string) (int, string, string) {

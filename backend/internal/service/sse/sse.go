@@ -3,12 +3,12 @@ package sse
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 type Service struct{ chat *chat.ChatService }
@@ -20,12 +20,12 @@ func New(service *chat.ChatService) (*Service, error) {
 	return &Service{chat: service}, nil
 }
 
-func (s *Service) Serve(ctx context.Context, r *ghttp.Request, id, question string) error {
+func (s *Service) Serve(ctx context.Context, w http.ResponseWriter, id, question string) error {
 	started := time.Now()
 	var executionErr error
 	chunks, contentBytes := 0, 0
 	defer func() {
-		middleware.SetExecutionError(r, executionErr)
+		middleware.SetExecutionError(ctx, executionErr)
 		logger.Finish(ctx, "SSE", "流式响应", started, executionErr, logger.F("chunks", chunks), logger.F("content_bytes", contentBytes))
 	}()
 	var writer *streamWriter
@@ -37,7 +37,7 @@ func (s *Service) Serve(ctx context.Context, r *ghttp.Request, id, question stri
 	err := s.chat.Stream(ctx, id, question, chat.StreamCallbacks{
 		OnStart: func(ctx context.Context) error {
 			var err error
-			writer, err = newWriter(r)
+			writer, err = newWriter(w)
 			if err != nil {
 				return err
 			}

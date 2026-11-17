@@ -3,18 +3,16 @@ package sse
 import (
 	"context"
 	"encoding/json"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
 	"io"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 )
 
 type streamWriter struct {
 	mu       sync.Mutex
-	request  *ghttp.Request
 	writer   http.ResponseWriter
 	control  *http.ResponseController
 	started  bool
@@ -22,19 +20,22 @@ type streamWriter struct {
 	terminal bool
 }
 
-func newWriter(r *ghttp.Request) (*streamWriter, error) {
-	if r == nil || r.Response == nil {
+func newWriter(writer http.ResponseWriter) (*streamWriter, error) {
+	if writer == nil {
 		return nil, chat.ErrInitialization
 	}
-	// GoFrame's buffered Flush discards I/O errors; write through its tracked raw writer instead.
-	base := r.Response.Writer.ResponseWriter
+	base := writer
+	// Bypass only the observed framework layers; keep transport wrappers and their failures.
+	if observed, ok := writer.(interface{ TransportWriter() http.ResponseWriter }); ok {
+		base = observed.TransportWriter()
+	}
 	_, flush := base.(http.Flusher)
 	_, flushError := base.(interface{ FlushError() error })
 	control := http.NewResponseController(base)
 	if (!flush && !flushError) || control.SetWriteDeadline(time.Time{}) != nil {
 		return nil, chat.ErrInitialization
 	}
-	return &streamWriter{request: r, writer: r.Response.RawWriter(), control: control}, nil
+	return &streamWriter{writer: writer, control: control}, nil
 }
 
 func (w *streamWriter) send(ctx context.Context, event string, data any) error {
@@ -78,11 +79,9 @@ func (w *streamWriter) writeFrame(ctx context.Context, frame []byte, terminal bo
 		return err
 	}
 	if !w.started {
-		w.request.Response.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-		w.request.Response.Header().Set("Cache-Control", "no-cache")
-		w.request.Response.Header().Set("X-Accel-Buffering", "no")
-		w.request.Response.WriteHeader(http.StatusOK)
-		middleware.MarkStreaming(w.request)
+		w.writer.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.writer.Header().Set("Cache-Control", "no-cache")
+		w.writer.Header().Set("X-Accel-Buffering", "no")
 		w.started = true
 		w.writer.WriteHeader(http.StatusOK)
 	}
@@ -95,6 +94,7 @@ func (w *streamWriter) writeFrame(ctx context.Context, frame []byte, terminal bo
 		w.broken = true
 		return io.ErrShortWrite
 	}
+	// A terminal frame is never followed by another event, even if its flush fails.
 	if terminal {
 		w.terminal = true
 	}

@@ -1,10 +1,6 @@
 package v1
 
-import "github.com/gogf/gf/v2/frame/g"
-
-type UploadReq struct {
-	g.Meta `path:"/upload" method:"post" mime:"multipart/form-data" summary:"知识文件上传并入库"`
-}
+type UploadReq struct{}
 
 type UploadRes struct {
 	FileName    string `json:"fileName"`

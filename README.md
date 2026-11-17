@@ -1,6 +1,6 @@
 # OnCallAgent
 
-基于 **GoFrame + Eino + Milvus** 的智能运维助手，将内部手册检索、工具调用和排查报告整合到同一个工作台。
+基于 **Gin + Eino + Milvus** 的智能运维助手，将内部手册检索、工具调用和排查报告整合到同一个工作台。
 
 OnCallAgent 提供带来源的知识问答、普通与流式对话，以及基于 Prometheus 告警的计划式运维分析。后端使用 Go，前端采用原生 HTML、CSS 和 JavaScript，无需前端构建流程。
 
@@ -22,7 +22,7 @@ OnCallAgent 提供带来源的知识问答、普通与流式对话，以及基�
 
 ```mermaid
 flowchart TB
-    User[浏览器 / API 调用方] --> HTTP[GoFrame HTTP API]
+    User[浏览器 / API 调用方] --> HTTP[Gin HTTP API]
     HTTP --> Chat[ChatService + 会话记忆]
     HTTP --> Knowledge[KnowledgeService]
     HTTP --> Ops[AIOpsService]
@@ -49,7 +49,7 @@ flowchart TB
 | 组件 | 当前版本 / 要求 |
 | --- | --- |
 | Go | **1.23.12**，命令使用 `GOTOOLCHAIN=local` |
-| GoFrame | v2.7.1 |
+| Gin | v1.11.0 |
 | Eino / DevOps | v0.6.0 / v0.1.7 |
 | ChatModel | Eino OpenAI 扩展 v0.1.1，模型须支持工具调用 |
 | Embedding | Eino Ark 扩展 v0.1.2；豆包多模态接口处理文本 |

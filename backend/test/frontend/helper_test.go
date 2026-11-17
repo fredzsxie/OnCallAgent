@@ -2,8 +2,7 @@ package frontend_test
 
 import (
 	"context"
-	"errors"
-	"net"
+	"net/http/httptest"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,18 +16,13 @@ import (
 	"github.com/cloudwego/eino/schema"
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/chat_pipeline"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	chatcontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
-	knowledgecontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
 	chatservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/sse"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/mem"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 type memoryRetriever struct{ store *testutil.MemoryStore }
@@ -106,42 +100,17 @@ func TestFrontendServerHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := ghttp.GetServer("frontend-test-" + guid.S())
-	server.SetDumpRouterMap(false)
-	server.SetAccessLogEnabled(false)
-	server.SetErrorLogEnabled(false)
-	server.SetClientMaxBodySize(max + middleware.MultipartOverhead)
-	opsService := addOpsFixture(t, ctx, server, &store.MemoryStore, search)
-	server.Group("/api", func(group *ghttp.RouterGroup) {
-		group.Middleware(middleware.ResponseMiddleware)
-		group.Bind(chatcontroller.NewV1(chat, streams))
-		group.Bind(knowledgecontroller.NewV1(manager, search))
-		if opsService != nil {
-			group.Bind(chatcontroller.NewAIOpsV1(opsService))
-		}
-		group.Group("", func(files *ghttp.RouterGroup) {
-			files.Middleware(middleware.UploadBody(max))
-			files.Bind(upload.NewV1(knowledgeService))
-			files.Bind(knowledgecontroller.NewWriteV1(manager))
-		})
+	opsService, scenario := addOpsFixture(t, ctx, &store.MemoryStore, search)
+	engine := router.New(ctx, router.Dependencies{
+		Chat: chat, Streams: streams, Ops: opsService, Manager: manager,
+		Search: search, Upload: knowledgeService, MaxUploadBytes: max,
 	})
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	if scenario != nil {
+		engine.Any("/__test/ops-scenario", scenario)
 	}
-	if err := server.SetListener(listener); err != nil {
-		_ = listener.Close()
-		t.Fatal(err)
-	}
-	if err := server.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := server.Shutdown(); err != nil && !errors.Is(err, context.Canceled) {
-			t.Error(err)
-		}
-	}()
-	if err := os.WriteFile(ready, []byte("http://"+listener.Addr().String()), 0600); err != nil {
+	server := httptest.NewServer(engine)
+	defer server.Close()
+	if err := os.WriteFile(ready, []byte(server.URL), 0600); err != nil {
 		t.Fatal(err)
 	}
 	<-ctx.Done()

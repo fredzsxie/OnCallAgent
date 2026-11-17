@@ -1,13 +1,20 @@
 package chat
 
 import (
-	"context"
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/chat/v1"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/gogf/gf/v2/frame/g"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
+	"github.com/gin-gonic/gin"
 )
 
-func (c *ControllerV1) ChatStream(ctx context.Context, req *v1.ChatStreamReq) (*v1.ChatStreamRes, error) {
+func (c *ControllerV1) ChatStream(request *gin.Context) {
+	var req v1.ChatStreamReq
+	if request.ShouldBindJSON(&req) != nil {
+		middleware.Respond(request, nil, middleware.ErrInvalidRequest)
+		return
+	}
+	ctx := request.Request.Context()
 	logger.Info(ctx, "Chat", "用户请求", logger.F("Id", req.Id), logger.F("Question", req.Question))
-	return nil, c.streams.Serve(ctx, g.RequestFromCtx(ctx), req.Id, req.Question)
+	err := c.streams.Serve(ctx, request.Writer, req.Id, req.Question)
+	middleware.Respond(request, nil, err)
 }

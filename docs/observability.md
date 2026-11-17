@@ -4,24 +4,26 @@
 
 ## 格式与输出
 
-日志复用 GoFrame `glog`，统一为易读文本，不使用 JSONL。正文按“时间、级别、组件、代码位置、事件、字段”排列；组件不填充空格，位置相对 `backend/`。以下行号和请求 ID 为示意：
+日志由项目独立实现，使用标准库格式化与文件输出，统一为易读文本。正文按“毫秒时间、四字符级别、代码位置、组件、事件、字段”排列，位置相对 `backend/`。以下行号和请求 ID 为示意：
 
 ```text
-2026-01-01 08:00:00.125 +08:00 INFO  [HTTP](utility/middleware/logging.go:38) --> 请求开始 | req=example-request method=POST route=/api/chat
-2026-01-01 08:00:00.130 +08:00 INFO  [Chat](internal/controller/chat/chat_v1_chat.go:11) --> 用户请求 | req=example-request Id=demo Question="第一行\n第二行"
-2026-01-01 08:00:02.255 +08:00 INFO  [HTTP](utility/middleware/logging.go:72) --> 请求完成 | req=example-request method=POST route=/api/chat code=200 elapsed=2.13s outcome=success
-2026-01-01 08:01:00.255 +08:00 ERROR [HTTP](utility/middleware/logging.go:72) --> 请求未完成 | req=example-stream method=POST route=/api/chat_stream code=200 elapsed=60s outcome=timeout error_type=timeout
+2026-01-01 08:00:00.125 [INFO] utility/middleware/logging.go:52 -> [HTTP] 请求开始 rid[example-request] method[POST] route[/api/chat]
+2026-01-01 08:00:00.130 [INFO] internal/controller/chat/chat_v1_chat.go:20 -> [Chat] 用户请求 rid[example-request] Id[demo] Question[第一行\n第二行]
+2026-01-01 08:00:02.255 [INFO] utility/middleware/logging.go:90 -> [HTTP] 请求完成 rid[example-request] method[POST] route[/api/chat] code[200] elapsed[2.13s] outcome[success]
+2026-01-01 08:01:00.255 [ERRO] utility/middleware/logging.go:90 -> [HTTP] 请求未完成 rid[example-stream] method[POST] route[/api/chat_stream] code[200] elapsed[60s] outcome[timeout] error_type[timeout]
 ```
 
-时间包含毫秒和进程本地时区，耗时按量级显示 ms/s。代码位置表示日志从哪里发出，不是自动推断异常最初发生处；无法解析时为 `unknown:0`。普通与 `-trimpath` 构建均支持。直接 defer 在编译器优化下可能定位到执行它的 return 行。
+时间使用进程本地时区并包含毫秒，耗时按量级显示 ms/s。代码位置表示日志从哪里发出，不是自动推断异常最初发生处；无法解析时为 `unknown:0`。普通与 `-trimpath` 构建均支持。直接 defer 在编译器优化下可能定位到执行它的 return 行。
 
 Web 输出至 stderr 和每日文件 `log/oncall-YYYY-MM-DD.log`；从 `backend/` 启动时即为 `backend/log/`。CLI 运行日志默认只写文件，stdout/stderr 的业务协议不变。终端交互设备可为级别着色，文件与重定向输出无颜色；`NO_COLOR=1` 关闭终端颜色。
 
-启动时 INFO 级别打印真实 API 路由表，含 ADDRESS、METHOD、ROUTE、HANDLER、MIDDLEWARE 五列；仅标题显示代码位置，表格保留多行。请求日志保持单行，字段中的换行、引号、反斜杠和控制字符转义，避免伪造日志行。
+启动时 INFO 级别打印真实 API 路由表，含 METHOD、ROUTE、HANDLER 三列；仅标题显示代码位置，表格保留多行。请求日志保持单行，字段中的换行、右方括号、反斜杠和控制字符转义，避免伪造日志行。
 
 ## 请求关联
 
-每次 HTTP 请求由服务生成完整 `X-Request-ID`，以 `req=...` 贯穿服务、图、模型与工具；客户端同名 Header 不覆盖服务端 ID。CLI 每次执行生成 `run=...`；context 中已有有效 trace ID 时附加 `trace=...`，不表示项目自动部署了链路采集系统。
+HTTP 请求沿用合法的 `X-Request-ID`，缺失或非法时生成 UUID，写入请求和响应 Header，以 `rid[...]` 贯穿本进程的服务、图、模型与工具日志。合法 ID 最长 128 字符，仅含英文字母、数字及 `-_.:`。CLI 每次执行生成 `run[...]`。
+
+仅在 context 已有有效 trace ID 时附加 `trace[...]`。应用没有主动创建 span、解析 W3C 请求头、向上游传播追踪 Header 或导出链路；框架迁移后不保证自动生成 trace。外部服务客户端及其调用行为保持不变。
 
 在 `backend/` 执行：
 
@@ -31,9 +33,9 @@ curl -i http://127.0.0.1:6872/api/chat \
   -d '{"Id":"log-demo","Question":"认证失败后如何恢复？"}'
 
 # 用响应头中的完整 ID 替换示例值
-rg 'req=example-request' log/
-rg 'ERROR|WARN' log/
-rg 'code=401|code=503|error_type=timeout' log/
+rg -F 'rid[example-request]' log/
+rg '\[ERRO\]|\[WARN\]' log/
+rg 'code\[401\]|code\[503\]|error_type\[timeout\]' log/
 rg '用户请求|用户检索|用户上传' log/
 tail -f log/oncall-*.log
 ```
@@ -52,7 +54,7 @@ tail -f log/oncall-*.log
 | `agent`、`iteration`、`sequence`、`tool`、`count` | 运维步骤、工具及适用的结果数量 |
 | `step_id`、`duration_ms` | 关联步骤生命周期，以及服务端计算的终态耗时；不记录工具详情正文 |
 
-SSE 开始后的失败保留 `code=200`，通过 outcome/error_type 表明实际结果。API 错误响应和 CLI 错误 JSON 中的字符串 `code` 仍沿用原契约，与日志字段含义不同。
+SSE 开始后的失败保留 `code[200]`，通过 outcome/error_type 表明实际结果。API 错误响应和 CLI 错误 JSON 中的字符串 `code` 仍沿用原契约，与日志字段含义不同。
 
 ## 日志级别、留存与内容
 

@@ -1,10 +1,9 @@
 package health
 
 import (
-	"context"
-
-	v1 "github.com/fredzsxie/OnCallAgent/backend/api/health/v1"
 	healthservice "github.com/fredzsxie/OnCallAgent/backend/internal/service/health"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
+	"github.com/gin-gonic/gin"
 )
 
 type ControllerV1 struct{}
@@ -13,6 +12,6 @@ func NewV1() *ControllerV1 {
 	return &ControllerV1{}
 }
 
-func (c *ControllerV1) Health(_ context.Context, _ *v1.HealthReq) (*v1.HealthRes, error) {
-	return healthservice.Health(), nil
+func (c *ControllerV1) Health(ctx *gin.Context) {
+	middleware.Respond(ctx, healthservice.Health(), nil)
 }

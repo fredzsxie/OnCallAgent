@@ -10,7 +10,6 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/modelcheck"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/gogf/gf/v2/os/gctx"
 )
 
 func main() {
@@ -29,7 +28,7 @@ func run() error {
 		return err
 	}
 	// Share one total deadline across catalog lookup and completion instead of resetting it.
-	ctx, logs, err := logger.Bootstrap(gctx.New(), false)
+	ctx, logs, err := logger.Bootstrap(context.Background(), false)
 	if err != nil {
 		return err
 	}

@@ -2,24 +2,24 @@ package sse
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // ServeOps shares framing, flush/error handling and deadlines with chat SSE.
-func ServeOps(ctx context.Context, r *ghttp.Request, service *aiops.AIOpsService) error {
+func ServeOps(ctx context.Context, w http.ResponseWriter, service *aiops.AIOpsService) error {
 	started := time.Now()
 	var executionErr error
 	defer func() {
-		middleware.SetExecutionError(r, executionErr)
+		middleware.SetExecutionError(ctx, executionErr)
 		logger.Finish(ctx, "SSE", "运维进度流", started, executionErr)
 	}()
-	writer, err := newWriter(r)
+	writer, err := newWriter(w)
 	if err != nil {
 		executionErr = aiops.Wrap(aiops.ErrInitialization, nil)
 		return executionErr

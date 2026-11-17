@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,11 +14,8 @@ import (
 	"time"
 
 	pipeline "github.com/fredzsxie/OnCallAgent/backend/internal/ai/agent/plan_execute_replan"
-	controller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/chat"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/aiops"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 type runFunc func(context.Context, string, func(pipeline.Event) error) (*pipeline.Result, error)
@@ -41,34 +38,19 @@ func startOpsAPI(t *testing.T, s *aiops.AIOpsService, roots ...context.Context) 
 
 func startOpsAPIWriter(t *testing.T, s *aiops.AIOpsService, wrap func(http.ResponseWriter) http.ResponseWriter, roots ...context.Context) string {
 	t.Helper()
-	server := ghttp.GetServer("ops-http-" + guid.S())
-	server.SetDumpRouterMap(false)
-	server.SetAccessLogEnabled(false)
-	server.SetErrorLogEnabled(false)
+	root := context.Background()
 	if len(roots) > 0 {
-		middleware.ObserveHTTP(server, roots[0])
+		root = roots[0]
 	}
-	server.Group("/api", func(g *ghttp.RouterGroup) {
-		g.Middleware(middleware.ResponseMiddleware)
-		g.Bind(controller.NewAIOpsV1(s))
-	})
+	engine := router.New(root, router.Dependencies{Ops: s})
+	var handler http.Handler = engine
 	if wrap != nil {
-		server.SetHandler(func(w http.ResponseWriter, r *http.Request) { server.ServeHTTP(wrap(w), r) })
+		// Wrap before Gin so response-controller failures reach the streaming writer.
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { engine.ServeHTTP(wrap(w), r) })
 	}
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = server.SetListener(l); err != nil {
-		l.Close()
-		t.Fatal(err)
-	}
-	if err = server.Start(); err != nil {
-		l.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { server.Shutdown() })
-	return "http://" + l.Addr().String()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	return server.URL
 }
 
 func TestAIOpsSharedServiceValidationCopiesAndConcurrency(t *testing.T) {

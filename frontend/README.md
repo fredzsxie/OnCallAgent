@@ -58,6 +58,6 @@ ONCALL_INTEGRATION=0 node --test backend/test/frontend/*.test.mjs
 - AI Ops 当前步骤与耗时实时更新、同名工具并行、详情展开状态、成功后报告优先、无告警、证据受限、超时、断连、取消后重试与窄屏布局。
 - Markdown 安全过滤、多行代码、中文输入法、移动端布局、键盘焦点及滚动。
 
-真实 GoFrame + Graph + 模拟依赖的浏览器链路和显式云端测试见[开发与测试](../docs/development.md)。单元测试、本地模拟和真实浏览器/云端验证应分别记录，不互相替代。
+真实 Gin + Graph + 模拟依赖的浏览器链路和显式云端测试见[开发与测试](../docs/development.md)。单元测试、本地模拟和真实浏览器/云端验证应分别记录，不互相替代。
 
 实时进度接口见 [API 协议](../docs/api.md#运维实时进度)，复现命令和浏览器截图见 [实时进度验收](../docs/aiops-live-progress-acceptance.md)。

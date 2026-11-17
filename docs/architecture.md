@@ -10,7 +10,7 @@ OnCallAgent 将 HTTP 请求处理、业务服务、Agent 编排和外部客户�
 backend/
 ├── main.go                  # Web 依赖装配、图编译、路由与生命周期
 ├── cmd/                     # 独立 CLI
-├── api/                     # GoFrame 请求与响应类型
+├── api/                     # Gin 请求与响应类型
 ├── internal/
 │   ├── config/              # .env 加载、环境变量解析与校验
 │   ├── controller/          # 提取请求、调用服务、转换响应

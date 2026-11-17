@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,52 +15,22 @@ import (
 	"time"
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/config"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/health"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/test/testutil"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 func startAPI(t *testing.T, service *knowledge.KnowledgeService, max int64, roots ...context.Context) string {
 	t.Helper()
-	server := ghttp.GetServer("upload-test-" + guid.S())
-	server.SetDumpRouterMap(false)
-	server.SetAccessLogEnabled(false)
-	server.SetErrorLogEnabled(false)
+	root := context.Background()
 	if len(roots) > 0 {
-		middleware.ObserveHTTP(server, roots[0])
+		root = roots[0]
 	}
-	server.SetClientMaxBodySize(max + middleware.MultipartOverhead)
-	server.Group("/api", func(group *ghttp.RouterGroup) {
-		group.Middleware(middleware.ResponseMiddleware)
-		group.Bind(health.NewV1())
-		group.Group("", func(files *ghttp.RouterGroup) {
-			files.Middleware(middleware.UploadBody(max))
-			files.Bind(upload.NewV1(service))
-		})
-	})
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = server.SetListener(listener); err != nil {
-		_ = listener.Close()
-		t.Fatal(err)
-	}
-	if err = server.Start(); err != nil {
-		_ = listener.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := server.Shutdown(); err != nil {
-			t.Error(err)
-		}
-	})
-	return "http://" + listener.Addr().String()
+	server := httptest.NewServer(router.New(root, router.Dependencies{Upload: service, MaxUploadBytes: max}))
+	t.Cleanup(server.Close)
+	return server.URL
 }
 
 func localAPI(t *testing.T, store *testutil.MemoryStore, max int64) string {

@@ -13,12 +13,14 @@
 在仓库根目录执行，显式关闭真实集成：
 
 ```bash
-ONCALL_INTEGRATION=0 GOTOOLCHAIN=local go -C backend test ./...
-ONCALL_INTEGRATION=0 GOTOOLCHAIN=local go -C backend test -race ./...
-GOTOOLCHAIN=local go -C backend vet ./...
-GOTOOLCHAIN=local go -C backend build ./...
+ONCALL_INTEGRATION=0 GOTOOLCHAIN=local go -C backend test . ./api/... ./cmd/... ./internal/... ./utility/... ./test/...
+ONCALL_INTEGRATION=0 GOTOOLCHAIN=local go -C backend test -race . ./api/... ./cmd/... ./internal/... ./utility/... ./test/...
+GOTOOLCHAIN=local go -C backend vet . ./api/... ./cmd/... ./internal/... ./utility/... ./test/...
+GOTOOLCHAIN=local go -C backend build . ./api/... ./cmd/... ./internal/... ./utility/...
 ONCALL_INTEGRATION=0 node --test backend/test/frontend/*.test.mjs
 ```
+
+以上包范围覆盖全部项目源码与测试，避开被 Git 忽略的 `backend/data/` 运行数据及本地维护脚本；这些脚本可能包含多个独立 `main`，不能作为同一个 Go 包编译。
 
 默认测试会启动本机 HTTP/gRPC 服务和 CLI 子进程；需要可写临时目录、Go 缓存及本地监听权限，但不要求真实云端凭据。测试包括：
 
@@ -64,7 +66,7 @@ GOTOOLCHAIN=local go -C backend test \
 
 ### 浏览器完整链路
 
-保留上面的模拟进程。另一终端在仓库根目录启动测试专用 GoFrame 服务：
+保留上面的模拟进程。另一终端在仓库根目录启动测试专用 Gin 服务：
 
 ```bash
 ONCALL_FRONTEND_HELPER_READY=/tmp/oncall-frontend-ready \

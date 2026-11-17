@@ -1,7 +1,6 @@
 package upload
 
 import (
-	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -9,16 +8,23 @@ import (
 	v1 "github.com/fredzsxie/OnCallAgent/backend/api/upload/v1"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/gogf/gf/v2/frame/g"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
+	"github.com/gin-gonic/gin"
 )
 
 type ControllerV1 struct{ service *knowledge.KnowledgeService }
 
 func NewV1(service *knowledge.KnowledgeService) *ControllerV1 { return &ControllerV1{service} }
 
-func (c *ControllerV1) Upload(ctx context.Context, _ *v1.UploadReq) (res *v1.UploadRes, err error) {
-	file := g.RequestFromCtx(ctx).GetUploadFile("file")
-	if file == nil {
+func (c *ControllerV1) Upload(request *gin.Context) {
+	result, err := c.upload(request)
+	middleware.Respond(request, result, err)
+}
+
+func (c *ControllerV1) upload(request *gin.Context) (res *v1.UploadRes, err error) {
+	ctx := request.Request.Context()
+	file, err := request.FormFile("file")
+	if err != nil {
 		return nil, knowledge.ErrInvalidDocument
 	}
 	logger.Info(ctx, "Upload", "用户上传", logger.F("file_name", file.Filename), logger.F("size", file.Size), logger.F("format", strings.ToLower(filepath.Ext(file.Filename))))

@@ -6,19 +6,15 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	knowledgecontroller "github.com/fredzsxie/OnCallAgent/backend/internal/controller/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/internal/controller/upload"
+	"github.com/fredzsxie/OnCallAgent/backend/internal/router"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
-	"github.com/fredzsxie/OnCallAgent/backend/utility/middleware"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 func TestKnowledgeHTTPBrowseSearchUploadAndConflict(t *testing.T) {
@@ -44,31 +40,9 @@ func TestKnowledgeHTTPBrowseSearchUploadAndConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := ghttp.GetServer("knowledge-test-" + guid.S())
-	server.SetDumpRouterMap(false)
-	server.SetAccessLogEnabled(false)
-	server.SetErrorLogEnabled(false)
-	server.Group("/api", func(g *ghttp.RouterGroup) {
-		g.Middleware(middleware.ResponseMiddleware)
-		g.Bind(knowledgecontroller.NewV1(m, s))
-		g.Group("", func(files *ghttp.RouterGroup) {
-			files.Middleware(middleware.UploadBody(cfg.MaxUploadBytes))
-			files.Bind(knowledgecontroller.NewWriteV1(m))
-			files.Bind(upload.NewV1(legacy))
-		})
-	})
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = server.SetListener(listener); err != nil {
-		t.Fatal(err)
-	}
-	if err = server.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer server.Shutdown()
-	origin := "http://" + listener.Addr().String()
+	server := httptest.NewServer(router.New(ctx, router.Dependencies{Manager: m, Search: s, Upload: legacy, MaxUploadBytes: cfg.MaxUploadBytes}))
+	defer server.Close()
+	origin := server.URL
 	send := func(method, path, contentType string, body io.Reader, want int) json.RawMessage {
 		t.Helper()
 		req, err := http.NewRequest(method, origin+path, body)
@@ -123,6 +97,24 @@ func TestKnowledgeHTTPBrowseSearchUploadAndConflict(t *testing.T) {
 	json.Unmarshal(send("GET", "/api/knowledge/documents?docType=glossary&pageSize=1", "", nil, 200), &page)
 	if page.Total != 1 || len(page.Items) != 1 {
 		t.Fatalf("invalid list: %+v", page)
+	}
+	if err = json.Unmarshal(send("GET", "/api/knowledge/documents", "", nil, 200), &page); err != nil || page.Page != 1 || page.PageSize != 20 {
+		t.Fatalf("invalid default pagination: %+v, %v", page, err)
+	}
+	for _, filter := range []struct {
+		query string
+		total int
+	}{{"tags[]=cdn", 1}, {"tags[]=missing", 0}, {"tags=missing", 0}} {
+		if err = json.Unmarshal(send("GET", "/api/knowledge/documents?"+filter.query, "", nil, 200), &page); err != nil || page.Total != filter.total {
+			t.Fatalf("filter %s: %+v, %v", filter.query, page, err)
+		}
+	}
+	for _, path := range []string{
+		"/api/knowledge/documents?page=0", "/api/knowledge/documents?pageSize=101", "/api/knowledge/documents?page=invalid",
+		"/api/knowledge/documents/invalid", "/api/knowledge/documents/" + strings.Repeat("A", 64),
+		"/api/knowledge/documents/" + d.ID + "/chunks?page=0",
+	} {
+		send("GET", path, "", nil, 400)
 	}
 	var detail knowledge.DocumentInfo
 	json.Unmarshal(send("GET", "/api/knowledge/documents/"+d.ID, "", nil, 200), &detail)

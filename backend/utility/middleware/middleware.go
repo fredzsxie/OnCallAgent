@@ -11,43 +11,49 @@ import (
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/chat"
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/client"
-	"github.com/gogf/gf/v2/errors/gcode"
-	"github.com/gogf/gf/v2/errors/gerror"
-	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
+	"github.com/gin-gonic/gin"
 )
+
+var ErrInvalidRequest = errors.New("invalid request")
 
 type Response struct {
 	Message string `json:"message"`
 	Data    any    `json:"data"`
 }
 
-type streamKey struct{}
-
-func MarkStreaming(r *ghttp.Request) { r.SetCtxVar(streamKey{}, true) }
-
-func ResponseMiddleware(r *ghttp.Request) {
-	r.Middleware.Next()
-	if r.GetCtxVar(streamKey{}).Bool() {
+// Respond preserves the JSON envelope and never appends JSON to a started stream.
+func Respond(c *gin.Context, data any, err error) {
+	if err != nil {
+		SetExecutionError(c.Request.Context(), err)
+	}
+	if c.Writer.Written() {
 		return
 	}
-	if err := r.GetError(); err != nil {
-		if r.URL.Path == "/api/ai_ops" || r.URL.Path == "/api/ai_ops_stream" {
-			var failure *aiops.Error
-			if !errors.As(err, &failure) {
-				if gerror.Code(err) == gcode.CodeValidationFailed || gerror.Code(err) == gcode.CodeInvalidParameter {
-					err = ops.ErrInvalidInput
-				} else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-					err = aiops.ErrInternal
-				}
-				err = aiops.Wrap(err, nil)
-			}
-		}
+	if err != nil {
 		status, body := ErrorResponse(err)
-		r.Response.WriteHeader(status)
-		r.Response.WriteJson(body)
+		c.JSON(status, body)
 		return
 	}
-	r.Response.WriteJson(Response{Message: "OK", Data: r.GetHandlerResponse()})
+	c.JSON(http.StatusOK, Response{Message: "OK", Data: data})
+}
+
+// Recovery observes panics without exposing panic values or request credentials.
+func Recovery() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err := errors.New("request handler panicked")
+				if c.Request.URL.Path == "/api/ai_ops" || c.Request.URL.Path == "/api/ai_ops_stream" {
+					err = aiops.Wrap(aiops.ErrInternal, nil)
+				}
+				logger.Error(c.Request.Context(), "HTTP", "请求处理发生异常", logger.F("error_type", "panic"))
+				Respond(c, nil, err)
+				c.Abort()
+			}
+		}()
+		c.Next()
+	}
 }
 
 // Keep public error messages identical before and after the SSE response starts.
@@ -103,7 +109,7 @@ func ErrorResponse(err error) (int, Response) {
 		status, message = http.StatusServiceUnavailable, "knowledge ingestion failed; retry the upload"
 		data = map[string]bool{"retryable": true}
 
-	case errors.Is(err, chat.ErrInvalidInput), gerror.Code(err) == gcode.CodeValidationFailed, gerror.Code(err) == gcode.CodeInvalidParameter:
+	case errors.Is(err, chat.ErrInvalidInput), errors.Is(err, ErrInvalidRequest):
 		status, message = http.StatusBadRequest, "invalid request"
 	case errors.Is(err, context.DeadlineExceeded):
 		status, message = http.StatusGatewayTimeout, "model request timed out"

@@ -7,30 +7,32 @@ import (
 
 	"github.com/fredzsxie/OnCallAgent/backend/internal/service/knowledge"
 	"github.com/fredzsxie/OnCallAgent/backend/utility/logger"
-	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gin-gonic/gin"
 )
 
 const MultipartOverhead int64 = 1 << 20
 
-func UploadBody(maxBytes int64) ghttp.HandlerFunc {
-	return func(r *ghttp.Request) {
+func UploadBody(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		r := c.Request
+		reject := func(err error) { Respond(c, nil, err); c.Abort() }
 		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil {
-			r.SetError(knowledge.ErrInvalidDocument)
+			reject(knowledge.ErrInvalidDocument)
 			return
 		}
 		if mediaType != "multipart/form-data" {
-			r.SetError(knowledge.ErrUnsupportedFormat)
+			reject(knowledge.ErrUnsupportedFormat)
 			return
 		}
 		limit := maxBytes + MultipartOverhead
 		if r.ContentLength > limit {
-			r.SetError(knowledge.ErrTooLarge)
+			reject(knowledge.ErrTooLarge)
 			return
 		}
-		// Parse before GoFrame binds the request, so body errors keep their HTTP meaning.
-		r.Body = http.MaxBytesReader(r.Response.RawWriter(), r.Body, limit)
-		err = r.Request.ParseMultipartForm(min(maxBytes, 1<<20))
+		// Parse before binding so size, cancellation and malformed-body errors retain their meaning.
+		r.Body = http.MaxBytesReader(c.Writer, r.Body, limit)
+		err = r.ParseMultipartForm(min(maxBytes, 1<<20))
 		defer func() {
 			if r.MultipartForm != nil {
 				if err := r.MultipartForm.RemoveAll(); err != nil {
@@ -42,11 +44,11 @@ func UploadBody(maxBytes int64) ghttp.HandlerFunc {
 			var tooLarge *http.MaxBytesError
 			switch {
 			case errors.As(err, &tooLarge):
-				r.SetError(knowledge.ErrTooLarge)
+				reject(knowledge.ErrTooLarge)
 			case r.Context().Err() != nil:
-				r.SetError(r.Context().Err())
+				reject(r.Context().Err())
 			default:
-				r.SetError(knowledge.ErrInvalidDocument)
+				reject(knowledge.ErrInvalidDocument)
 			}
 			return
 		}
@@ -56,13 +58,13 @@ func UploadBody(maxBytes int64) ghttp.HandlerFunc {
 		}
 		files := r.MultipartForm.File["file"]
 		if count != 1 || len(files) != 1 {
-			r.SetError(knowledge.ErrInvalidDocument)
+			reject(knowledge.ErrInvalidDocument)
 			return
 		}
 		if files[0].Size > maxBytes {
-			r.SetError(knowledge.ErrTooLarge)
+			reject(knowledge.ErrTooLarge)
 			return
 		}
-		r.Middleware.Next()
+		c.Next()
 	}
 }
