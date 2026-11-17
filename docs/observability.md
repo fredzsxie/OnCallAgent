@@ -23,7 +23,7 @@ Web 输出至 stderr 和每日文件 `log/oncall-YYYY-MM-DD.log`；从 `backend/
 
 HTTP 请求沿用合法的 `X-Request-ID`，缺失或非法时生成 UUID，写入请求和响应 Header，以 `rid[...]` 贯穿本进程的服务、图、模型与工具日志。合法 ID 最长 128 字符，仅含英文字母、数字及 `-_.:`。CLI 每次执行生成 `run[...]`。
 
-仅在 context 已有有效 trace ID 时附加 `trace[...]`。应用没有主动创建 span、解析 W3C 请求头、向上游传播追踪 Header 或导出链路；框架迁移后不保证自动生成 trace。外部服务客户端及其调用行为保持不变。
+仅在 context 已有有效 trace ID 时附加 `trace[...]`。应用没有主动创建 span、解析 W3C 请求头、向上游传播追踪 Header 或导出链路；框架迁移后不保证自动生成 trace。客户端仅增加过程日志，查询、认证、超时与重试行为保持不变。
 
 在 `backend/` 执行：
 
@@ -50,7 +50,7 @@ tail -f log/oncall-*.log
 | `status` | 运维事件的 completed/failed 等语义状态，不重复表示 HTTP 状态码 |
 | `headers_elapsed` | 收到上游响应头的耗时，不代表完整生成结束 |
 | `elapsed` | 当前事件所覆盖操作的耗时 |
-| `req`、`rsp` | 终态 HTTP 日志中的请求、响应预览；完整且限长的 JSON 脱敏后输出，其余情况使用下表标记 |
+| `req`、`rsp` | HTTP 终态中的请求/响应预览，以及 Tool 开始/完成时的实际 JSON 输入/结果预览；共用脱敏与限长规则 |
 | `req_bytes`、`rsp_bytes` | 业务实际读取的请求字节数、底层 writer 成功接收的响应字节数；不是预览长度，也不保证等于 Content-Length 或客户端实收数量 |
 | `source_hash`、`session_hash` | 内部来源或会话的稳定摘要，便于关联而不输出存储路径 |
 | `agent`、`iteration`、`sequence`、`tool`、`count` | 运维步骤、工具及适用的结果数量 |
@@ -59,6 +59,8 @@ tail -f log/oncall-*.log
 | `output_bytes`、`history_committed` | 聊天输出或工具结果的字节数，以及聊天历史是否提交；流式聊天累计成功交付回调的正文片段 |
 | `report_bytes`、`tool_failures`、`evidence_limited` | 运维报告的返回字节数、工具失败数及证据是否受限；失败时不返回报告，report_bytes 为 0 |
 | `timestamp`、`timezone` | 时间工具实际返回的时间戳和时区，仅该工具记录这些结果字段 |
+| `target`、`method`、`role` | 实际上游 HTTP URL、方法及调用角色；URL 移除用户信息、片段并脱敏敏感查询参数 |
+| `response_bytes` | 调用方实际读取的上游响应字节数；被拒绝且未读取的响应可以为 0 |
 
 SSE 开始后的失败保留 `code[200]`，通过 outcome/error_type 表明实际结果。API 错误响应和 CLI 错误 JSON 中的字符串 `code` 仍沿用原契约，与日志字段含义不同。
 
@@ -66,7 +68,7 @@ SSE 开始后的失败保留 `code[200]`，通过 outcome/error_type 表明实�
 
 中间件随业务读取请求，保留原始 body 的读取和关闭行为；响应在写出后仅计入成功写出的字节，同时覆盖 `Write` 和 `WriteString`。每侧 JSON 缓存最多 **8 KiB + 1 字节（8193 字节）**，额外一字节只用于识别超限。这个限制不截断业务请求或响应。
 
-仅 `application/json` 和 `+json` 媒体类型进入正文缓存，支持 Content-Type 参数。请求需正常到达 EOF，或实际读取量等于已知 Content-Length，且没有非 EOF 读取错误；响应写出失败或短写时不视为完整。完整、有效 UTF-8 且不超过 **8 KiB** 的 JSON 才会解析并递归脱敏，支持嵌套对象和数组。敏感键忽略大小写、连字符和下划线，匹配 Authorization、Cookie、password、secret、token、api_key、private_key、access_key 等片段，因此也覆盖 accessToken、clientSecret 和 X-Api-Key；值替换为 `[REDACTED]`。
+仅 `application/json` 和 `+json` 媒体类型进入正文缓存，支持 Content-Type 参数。请求需正常到达 EOF，或实际读取量等于已知 Content-Length，且没有非 EOF 读取错误；响应写出失败或短写时不视为完整。完整、有效 UTF-8 且不超过 **8 KiB** 的 JSON 才会解析并递归脱敏，支持嵌套对象和数组。敏感键忽略大小写、连字符和下划线，匹配 Authorization、Cookie、password、secret、token、api_key、private_key、access_key、signature 等片段及独立的 key，因此也覆盖 accessToken、clientSecret 和 X-Api-Key；值替换为 `[REDACTED]`。
 
 脱敏后重新序列化的 JSON，以及字段转义后的显示内容，都必须不超过 **8 KiB**。超出任一上限即改为标记，不输出未脱敏前缀或半截 JSON，因此不会切断 UTF-8 字符。该上限针对每个正文预览，不是整条日志行的长度限制。
 
@@ -82,6 +84,38 @@ SSE 开始后的失败保留 `code[200]`，通过 outcome/error_type 表明实�
 
 HTTP 当前输入仅在中间件终态 `req` 中记录一次，控制器不再重复打印 Id、Question 或请求流；SSE 的 JSON 请求也遵循同一规则，流式响应正文不记录。聊天、检索和运维 CLI 仍完整记录一次当前 Id/Question 或 query，并转义换行等字符，不套用 HTTP 预览上限。
 
+## 工具与依赖请求
+
+以下过程在默认 INFO 级别可见，并沿用同一次调用的 `rid` 或 `run`。HTTP 入口的 `req/rsp` 与工具的 `req/rsp` 通过组件名称区分：
+
+| 组件 | 记录内容 |
+| --- | --- |
+| `Tool` | 开始时记录工具名和实际 JSON 入参 `req`；成功时记录结果 `rsp`、字节数和耗时；失败记录安全 `error_type` |
+| `Milvus` | `Search`、`Query`、`HybridSearch` 的集合、过滤表达式、输出字段、TopK/分页、ANN 参数与一致性；BM25/混合检索记录实际文本；完成时记录数量与耗时 |
+| `Prom`、`Model`、`Embed` | 实际 HTTP 方法、脱敏目标 URL、角色、响应状态、收到响应头的耗时，以及响应读取结束时的字节数与总耗时 |
+
+例如，行号与数据为示意：
+
+```text
+2026-11-17 08:00:00.130 [INFO] internal/ai/tools/logging.go:23 -> [Tool] 开始执行工具 rid[example-request] tool[query_internal_docs] req[{"query":"cache errors"}]
+2026-11-17 08:00:00.140 [INFO] utility/client/milvus.go:143 -> [Milvus] 发起查询 rid[example-request] operation[HybridSearch] collection[knowledge_v2] filter[document_id == "doc-a"] query[cache errors] topk[20] limit[3] rrf_k[60] consistency[Strong]
+2026-11-17 08:00:00.150 [INFO] utility/client/logging.go:43 -> [Prom] 发起上游请求 rid[example-request] role[alerts] method[GET] target[https://metrics.example.test/api/v1/alerts]
+2026-11-17 08:00:00.180 [INFO] utility/client/logging.go:120 -> [Prom] 上游响应读取结束 rid[example-request] role[alerts] method[GET] target[https://metrics.example.test/api/v1/alerts] code[200] response_bytes[41] outcome[eof] elapsed[30ms]
+```
+
+Milvus 日志展示真实 SDK 参数与过滤表达式；数值向量仅记录数量、维度。Prometheus 当前工具实际调用 `GET /api/v1/alerts`，配置的基础路径会保留在 `target` 中。
+
+工具 JSON 预览同样最多 8 KiB，超限仅输出 `<truncated>`；大结果仍原样返回，但日志跳过用于摘要的全量 JSON 解析，保留字节数和耗时。工具结果中的文档片段、告警标签和注释会按此规则进入日志。
+
+上游 HTTP 日志只观察调用方正常读取的响应，不提前读取正文或额外消费模型流。`outcome[eof]` 表示响应体已读完，`closed` 表示已关闭；它们不表示业务成功，需结合数值 `code` 与工具结果判断。未建立响应的连接失败只记录安全错误类别和耗时，不填写 HTTP 状态码。认证 Header、模型提示词、Embedding 文本和数值向量不进入这些 HTTP 过程日志。
+
+按一次请求查看全部过程：
+
+```bash
+rg -F 'rid[example-request]' log/
+rg -F -e '[Tool]' -e '[Milvus]' -e '[Prom]' log/
+```
+
 ## 日志级别、留存与内容
 
 INFO 记录启动、图编译、关键业务结果与请求边界；DEBUG 增加节点、批次、连接关闭和健康检查；WARN 记录校验拒绝、取消或可恢复工具错误；ERROR 记录终止执行的错误。调整级别后重启服务：
@@ -93,9 +127,9 @@ ONCALL_LOG_LEVEL=debug GOTOOLCHAIN=local go run .
 
 默认保留 7 个日历日（今天及之前六天），在启动和跨日写入时仅清理当前目录中严格匹配本模块命名的过期常规文件。启动检查日志目录可写性，运行期间写入失败会向 Web stderr 输出一次安全提示，不改变业务响应。
 
-**普通 JSON 请求和响应的限长预览会进入日志**，可能包含当前问题、模型回答、运维报告、文档内容或工具详情；上述敏感键会递归脱敏。上传正文、multipart 响应及 SSE 事件正文不进入 HTTP 预览。业务步骤日志仅补充输出字节数、数量、状态、父子步骤和时间工具结果，不额外打印报告、模型提示词、聊天历史或完整工具结果，也不直接输出上游原始错误。
+**普通 JSON 请求和响应的限长预览会进入日志**，可能包含当前问题、模型回答、运维报告、文档内容或工具详情；上述敏感键会递归脱敏。上传正文、multipart 响应及 SSE 事件正文不进入 HTTP 预览。工具边界额外记录实际 JSON 输入与结果的限长脱敏预览，Milvus 边界记录实际查询参数。运维步骤日志仍以字节数、数量、状态和父子步骤为主；上游原始错误、模型提示词与聊天历史保持省略。
 
-脱敏按 JSON 字段名进行，不会识别任意自然语言中的敏感信息；CLI 当前输入仍完整记录。请据实际数据要求管理日志权限、备份和留存。`rid` 用于本地关联，被动 `trace` 读取与外部客户端行为见上文，不提供自动跨服务追踪。
+JSON 和 URL 参数按键名脱敏；查询文本、过滤表达式以及任意自然语言内的敏感信息无法自动识别。CLI 当前输入仍完整记录。请据实际数据要求管理日志权限、备份和留存。`rid` 用于本地关联，被动 `trace` 读取与外部客户端行为见上文，不提供自动跨服务追踪。
 
 ## 常见问题
 

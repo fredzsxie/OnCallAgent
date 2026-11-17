@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
@@ -38,13 +39,14 @@ type observedTransport struct {
 
 func (t *observedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	started := time.Now()
-	logger.Debug(r.Context(), t.component, "发起上游请求", logger.F("role", t.role), logger.F("method", r.Method))
+	target := logger.URLPreview(r.URL)
+	logger.Info(r.Context(), t.component, "发起上游请求", logger.F("role", t.role), logger.F("method", r.Method), logger.F("target", target))
 	response, err := t.base.RoundTrip(r)
 	if err != nil {
 		if r.Context().Err() != nil {
 			err = r.Context().Err()
 		}
-		logger.Failure(r.Context(), t.component, "上游连接失败", err, logger.F("role", t.role), logger.F("elapsed", time.Since(started)))
+		logger.Failure(r.Context(), t.component, "上游连接失败", err, logger.F("role", t.role), logger.F("method", r.Method), logger.F("target", target), logger.F("outcome", "failed"), logger.F("elapsed", time.Since(started)))
 		return response, err
 	}
 	log := logger.Info
@@ -65,8 +67,8 @@ func (t *observedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		errorType = "redirect_rejected"
 		log = logger.Warn
 	}
-	log(r.Context(), t.component, "收到上游响应头", logger.F("role", t.role), logger.F("code", response.StatusCode), logger.F("error_type", errorType), logger.F("headers_elapsed", time.Since(started)))
-	response.Body = &observedBody{ReadCloser: response.Body, ctx: r.Context(), component: t.component, role: t.role, started: started, status: response.StatusCode}
+	log(r.Context(), t.component, "收到上游响应头", logger.F("role", t.role), logger.F("method", r.Method), logger.F("target", target), logger.F("code", response.StatusCode), logger.F("error_type", errorType), logger.F("headers_elapsed", time.Since(started)))
+	response.Body = &observedBody{ReadCloser: response.Body, ctx: r.Context(), component: t.component, role: t.role, method: r.Method, target: target, started: started, status: response.StatusCode}
 	return response, nil
 }
 
@@ -80,13 +82,17 @@ type observedBody struct {
 	io.ReadCloser
 	ctx             context.Context
 	component, role string
+	method, target  string
 	started         time.Time
 	status          int
 	once            sync.Once
+	bytes           atomic.Int64
 }
 
 func (b *observedBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
+	// Count only reads requested by the caller; observing a stream never drains it.
+	b.bytes.Add(int64(n))
 	if err != nil {
 		if err == io.EOF {
 			b.finish("eof", nil)
@@ -107,11 +113,11 @@ func (b *observedBody) finish(outcome string, err error) {
 			err = b.ctx.Err()
 			outcome = logger.ErrorType(err)
 		}
-		fields := []logger.Field{logger.F("role", b.role), logger.F("code", b.status), logger.F("outcome", outcome), logger.F("elapsed", time.Since(b.started))}
+		fields := []logger.Field{logger.F("role", b.role), logger.F("method", b.method), logger.F("target", b.target), logger.F("code", b.status), logger.F("response_bytes", b.bytes.Load()), logger.F("outcome", outcome), logger.F("elapsed", time.Since(b.started))}
 		if err != nil {
 			logger.Failure(b.ctx, b.component, "上游响应读取失败", err, fields...)
 			return
 		}
-		logger.Debug(b.ctx, b.component, "上游响应读取结束", fields...)
+		logger.Info(b.ctx, b.component, "上游响应读取结束", fields...)
 	})
 }

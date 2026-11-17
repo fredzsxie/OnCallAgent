@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -109,11 +110,44 @@ func (c *milvusDB) Delete(ctx context.Context, collection, filter string) error 
 	_, err := c.sdk.Delete(ctx, milvusclient.NewDeleteOption(collection).WithExpr(filter))
 	return err
 }
-func (c *milvusDB) Search(ctx context.Context, collection, filter string, fields []string, vectors []entity.Vector, field string, metric entity.MetricType, k int, params index.AnnParam) ([]milvusclient.ResultSet, error) {
+func (c *milvusDB) Search(ctx context.Context, collection, filter string, fields []string, vectors []entity.Vector, field string, metric entity.MetricType, k int, params index.AnnParam) (out []milvusclient.ResultSet, err error) {
+	started := time.Now()
+	outputFields, _ := json.Marshal(fields)
+	annParams := []byte(`{}`)
+	if params != nil {
+		annParams, _ = json.Marshal(params.Params())
+	}
+	queryFields := []logger.Field{logger.F("operation", "Search"), logger.F("collection", logger.TextPreview(collection)), logger.F("filter", logger.TextPreview(filter)), logger.F("output_fields", logger.JSONPreview(outputFields)), logger.F("anns_field", logger.TextPreview(field)), logger.F("metric", string(metric)), logger.F("ann_params", logger.JSONPreview(annParams)), logger.F("topk", k), logger.F("offset", 0), logger.F("vector_count", len(vectors)), logger.F("consistency", "Strong")}
+	var texts []string
+	for _, vector := range vectors {
+		if text, ok := vector.(entity.Text); ok {
+			texts = append(texts, logger.TextPreview(string(text)))
+		}
+	}
+	if len(texts) > 0 {
+		queries, _ := json.Marshal(texts)
+		queryFields = append(queryFields, logger.F("queries", logger.JSONPreview(queries)))
+	} else if len(vectors) > 0 && vectors[0] != nil {
+		queryFields = append(queryFields, logger.F("dimension", vectors[0].Dim()))
+	}
+	logger.Info(ctx, "Milvus", "发起查询", queryFields...)
+	defer func() {
+		count := 0
+		for _, result := range out {
+			count += result.ResultCount
+		}
+		logger.Finish(ctx, "Milvus", "查询", started, err, logger.F("operation", "Search"), logger.F("collection", logger.TextPreview(collection)), logger.F("count", count))
+	}()
 	// Strong reads are required before publishing a newly indexed document version.
 	return c.sdk.Search(ctx, milvusclient.NewSearchOption(collection, k, vectors).WithANNSField(field).WithFilter(filter).WithOutputFields(fields...).WithAnnParam(params).WithSearchParam("metric_type", string(metric)).WithConsistencyLevel(entity.ClStrong))
 }
-func (c *milvusDB) Query(ctx context.Context, collection, filter string, fields []string, limit, offset int) (milvusclient.DataSet, error) {
+func (c *milvusDB) Query(ctx context.Context, collection, filter string, fields []string, limit, offset int) (out milvusclient.DataSet, err error) {
+	started := time.Now()
+	outputFields, _ := json.Marshal(fields)
+	logger.Info(ctx, "Milvus", "发起查询", logger.F("operation", "Query"), logger.F("collection", logger.TextPreview(collection)), logger.F("filter", logger.TextPreview(filter)), logger.F("output_fields", logger.JSONPreview(outputFields)), logger.F("limit", limit), logger.F("offset", offset), logger.F("consistency", "Strong"))
+	defer func() {
+		logger.Finish(ctx, "Milvus", "查询", started, err, logger.F("operation", "Query"), logger.F("collection", logger.TextPreview(collection)), logger.F("count", out.Len()))
+	}()
 	r, err := c.sdk.Query(ctx, milvusclient.NewQueryOption(collection).WithFilter(filter).WithOutputFields(fields...).WithLimit(limit).WithOffset(offset).WithConsistencyLevel(entity.ClStrong))
 	return r.Fields, err
 }
@@ -144,7 +178,21 @@ type HybridMilvus interface {
 	HybridSearch(context.Context, string, entity.Vector, string, string, int, int) ([]milvusclient.ResultSet, error)
 }
 
-func (c *milvusDB) HybridSearch(ctx context.Context, collection string, vector entity.Vector, text, filter string, candidates, limit int) ([]milvusclient.ResultSet, error) {
+func (c *milvusDB) HybridSearch(ctx context.Context, collection string, vector entity.Vector, text, filter string, candidates, limit int) (out []milvusclient.ResultSet, err error) {
+	started := time.Now()
+	queryFields := []logger.Field{logger.F("operation", "HybridSearch"), logger.F("collection", logger.TextPreview(collection)), logger.F("filter", logger.TextPreview(filter)), logger.F("output_fields", `["content","metadata"]`), logger.F("query", logger.TextPreview(text)), logger.F("dense_field", "vector"), logger.F("dense_metric", "COSINE"), logger.F("sparse_field", "sparse_vector"), logger.F("sparse_metric", "BM25"), logger.F("topk", candidates), logger.F("limit", limit), logger.F("offset", 0), logger.F("rrf_k", 60), logger.F("ef", max(64, candidates)), logger.F("vector_count", 1), logger.F("consistency", "Strong")}
+	if vector != nil {
+		queryFields = append(queryFields, logger.F("dimension", vector.Dim()))
+	}
+	// Log text and routing parameters without serializing vector values or changing SDK options.
+	logger.Info(ctx, "Milvus", "发起查询", queryFields...)
+	defer func() {
+		count := 0
+		for _, result := range out {
+			count += result.ResultCount
+		}
+		logger.Finish(ctx, "Milvus", "查询", started, err, logger.F("operation", "HybridSearch"), logger.F("collection", logger.TextPreview(collection)), logger.F("count", count))
+	}()
 	dense := milvusclient.NewAnnRequest("vector", candidates, vector).WithFilter(filter).WithSearchParam("metric_type", "COSINE").WithAnnParam(index.NewHNSWAnnParam(max(64, candidates)))
 	sparse := milvusclient.NewAnnRequest("sparse_vector", candidates, entity.Text(text)).WithFilter(filter).WithSearchParam("metric_type", "BM25").WithAnnParam(index.NewSparseAnnParam())
 	return c.sdk.HybridSearch(ctx, milvusclient.NewHybridSearchOption(collection, limit, dense, sparse).WithOutputFields("content", "metadata").WithConsistencyLevel(entity.ClStrong).WithReranker(milvusclient.NewRRFReranker().WithK(60)))
