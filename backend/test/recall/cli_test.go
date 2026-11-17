@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -169,7 +168,8 @@ func TestCLILogsUserQueryBeforeDependencyInitialization(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Count(string(data), "用户检索") != 1 || strings.Count(string(data), "query="+strconv.QuoteToGraphic(query)) != 1 {
+		escaped := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\t", `\t`).Replace(query)
+		if strings.Count(string(data), "用户检索") != 1 || strings.Count(string(data), "query["+escaped+"]") != 1 {
 			t.Fatal("query missing or duplicated", string(data))
 		}
 	}
