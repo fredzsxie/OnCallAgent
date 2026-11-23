@@ -27,11 +27,14 @@ ONCALL_SERVER_PORT=6873 GOTOOLCHAIN=local go run .
 
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `ONCALL_SERVER_HOST` | 未配置，监听所有网卡 | 可选 IPv4/IPv6 地址；同机 Nginx 部署使用 `127.0.0.1`；显式空值无效 |
 | `ONCALL_SERVER_PORT` | `6872` | 整数，1–65535 |
 | `ONCALL_CHAT_MODEL_BASE_URL` | 无，必填 | OpenAI 兼容 API 基础地址，不含 `/chat/completions` |
 | `ONCALL_CHAT_MODEL_MODEL` | 无，必填 | 服务商实际可调用的模型 ID |
 | `ONCALL_CHAT_MODEL_API_KEY` | 无，必填 | 模型密钥 |
 | `ONCALL_CHAT_MODEL_TIMEOUT` | `30s` | 单次模型请求超时 |
+
+`ONCALL_SERVER_HOST` 仅填写 IP，不含协议或端口；IPv6 使用 `::1` 这样的原始地址，不加方括号。
 
 聊天和运维模型需要支持工具调用。Base URL 常以 `/v1` 结尾，但以实际提供方为准。例如 `https://your-provider.example/v1`，不要填成完整的聊天请求端点。`modelcheck` 可检查模型目录和一次调用；部分网关不提供 `/models`，详见 [CLI](cli.md#模型检查)。
 

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 )
 
 type Config struct {
+	Host      string
 	Port      int
 	ChatModel ChatModel
 }
@@ -38,12 +40,21 @@ func duration(name, fallback string) (time.Duration, error) {
 }
 
 func Load() (Config, error) {
+	host := env("ONCALL_SERVER_HOST", "")
+	if _, configured := os.LookupEnv("ONCALL_SERVER_HOST"); configured && net.ParseIP(host) == nil {
+		return Config{}, fmt.Errorf("ONCALL_SERVER_HOST must be an IPv4 or IPv6 address")
+	}
 	port, err := strconv.Atoi(env("ONCALL_SERVER_PORT", "6872"))
 	if err != nil || port < 1 || port > 65535 {
 		return Config{}, fmt.Errorf("ONCALL_SERVER_PORT must be an integer between 1 and 65535")
 	}
 	model, err := LoadChatModel()
-	return Config{Port: port, ChatModel: model}, err
+	return Config{Host: host, Port: port, ChatModel: model}, err
+}
+
+// ListenAddress preserves wildcard binding by default and brackets IPv6 addresses.
+func (c Config) ListenAddress() string {
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 }
 
 func LoadChatModel() (ChatModel, error) {

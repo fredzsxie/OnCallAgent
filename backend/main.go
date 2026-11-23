@@ -202,7 +202,7 @@ func run() (err error) {
 		MaxUploadBytes: knowledgeCfg.MaxUploadBytes,
 	})
 	stage = "http_listen"
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	listener, err := net.Listen("tcp", cfg.ListenAddress())
 	if err != nil {
 		return errors.New("cannot start HTTP server; check listen port")
 	}
